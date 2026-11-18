@@ -290,7 +290,10 @@
     "Zmiany w Safari pozostaną bez zmian. Odrzucisz tylko przygotowane ikony w tym zakresie.": "Safari bleibt unverändert. Nur vorbereitete Symbole in diesem Bereich werden verworfen.",
     "Zmień motyw podglądu": "Vorschaumodus wechseln",
     "{0} stron · {1} do sprawdzenia": "{0} Seiten · {1} prüfen",
-    "⌘ lub ⇧, aby zaznaczyć więcej ikon": "⌘ oder ⇧ für Mehrfachauswahl"
+    "⌘ lub ⇧, aby zaznaczyć więcej ikon": "⌘ oder ⇧ für Mehrfachauswahl",
+    "Safari jest otwarte": "Safari ist geöffnet",
+    "Safari jest zamknięte": "Safari ist geschlossen",
+    "Przejdź do Safari i naciśnij ⌘Q, aby zastosować zmiany.": "Wechsle zu Safari und drücke ⌘Q, um Änderungen anzuwenden."
   },
   "en": {
     " Nie odtworzono: ": " Not restored: ",
@@ -583,7 +586,10 @@
     "Zmiany w Safari pozostaną bez zmian. Odrzucisz tylko przygotowane ikony w tym zakresie.": "Safari stays unchanged. Only staged icons in this scope will be discarded.",
     "Zmień motyw podglądu": "Switch preview appearance",
     "{0} stron · {1} do sprawdzenia": "{0} sites · {1} need attention",
-    "⌘ lub ⇧, aby zaznaczyć więcej ikon": "⌘ or ⇧ to select more icons"
+    "⌘ lub ⇧, aby zaznaczyć więcej ikon": "⌘ or ⇧ to select more icons",
+    "Safari jest otwarte": "Safari is open",
+    "Safari jest zamknięte": "Safari is closed",
+    "Przejdź do Safari i naciśnij ⌘Q, aby zastosować zmiany.": "Switch to Safari and press ⌘Q to apply changes."
   },
   "es": {
     " Nie odtworzono: ": " Sin restaurar: ",
@@ -876,7 +882,10 @@
     "Zmiany w Safari pozostaną bez zmian. Odrzucisz tylko przygotowane ikony w tym zakresie.": "Safari no cambia. Solo se descartarán los iconos preparados de este ámbito.",
     "Zmień motyw podglądu": "Cambiar apariencia de la vista previa",
     "{0} stron · {1} do sprawdzenia": "{0} sitios · {1} por revisar",
-    "⌘ lub ⇧, aby zaznaczyć więcej ikon": "⌘ o ⇧ para seleccionar varios iconos"
+    "⌘ lub ⇧, aby zaznaczyć więcej ikon": "⌘ o ⇧ para seleccionar varios iconos",
+    "Safari jest otwarte": "Safari está abierto",
+    "Safari jest zamknięte": "Safari está cerrado",
+    "Przejdź do Safari i naciśnij ⌘Q, aby zastosować zmiany.": "Cambia a Safari y pulsa ⌘Q para aplicar los cambios."
   },
   "fr": {
     " Nie odtworzono: ": " Non restauré : ",
@@ -1169,7 +1178,10 @@
     "Zmiany w Safari pozostaną bez zmian. Odrzucisz tylko przygotowane ikony w tym zakresie.": "Safari reste inchangé. Seules les icônes préparées dans cette sélection seront abandonnées.",
     "Zmień motyw podglądu": "Changer l’apparence de l’aperçu",
     "{0} stron · {1} do sprawdzenia": "{0} sites · {1} à vérifier",
-    "⌘ lub ⇧, aby zaznaczyć więcej ikon": "⌘ ou ⇧ pour sélectionner plusieurs icônes"
+    "⌘ lub ⇧, aby zaznaczyć więcej ikon": "⌘ ou ⇧ pour sélectionner plusieurs icônes",
+    "Safari jest otwarte": "Safari est ouvert",
+    "Safari jest zamknięte": "Safari est fermé",
+    "Przejdź do Safari i naciśnij ⌘Q, aby zastosować zmiany.": "Passez à Safari et appuyez sur ⌘Q pour appliquer les modifications."
   },
   "pl": {
     " Nie odtworzono: ": " Nie odtworzono: ",
@@ -1462,7 +1474,10 @@
     "Zmiany w Safari pozostaną bez zmian. Odrzucisz tylko przygotowane ikony w tym zakresie.": "Safari pozostanie bez zmian. Odrzucisz tylko przygotowane ikony w tym zakresie.",
     "Zmień motyw podglądu": "Zmień motyw podglądu",
     "{0} stron · {1} do sprawdzenia": "{0} stron · {1} do sprawdzenia",
-    "⌘ lub ⇧, aby zaznaczyć więcej ikon": "⌘ lub ⇧, aby zaznaczyć więcej ikon"
+    "⌘ lub ⇧, aby zaznaczyć więcej ikon": "⌘ lub ⇧, aby zaznaczyć więcej ikon",
+    "Safari jest otwarte": "Safari jest otwarte",
+    "Safari jest zamknięte": "Safari jest zamknięte",
+    "Przejdź do Safari i naciśnij ⌘Q, aby zastosować zmiany.": "Przejdź do Safari i naciśnij ⌘Q, aby zastosować zmiany."
   },
   "uk": {
     " Nie odtworzono: ": " Не відновлено: ",
@@ -1755,6 +1770,9 @@
     "Zmiany w Safari pozostaną bez zmian. Odrzucisz tylko przygotowane ikony w tym zakresie.": "Safari не зміниться. Буде відхилено лише підготовлені іконки в цій області.",
     "Zmień motyw podglądu": "Змінити тему перегляду",
     "{0} stron · {1} do sprawdzenia": "{0} сайтів · {1} потребують перевірки",
-    "⌘ lub ⇧, aby zaznaczyć więcej ikon": "⌘ або ⇧ для вибору кількох іконок"
+    "⌘ lub ⇧, aby zaznaczyć więcej ikon": "⌘ або ⇧ для вибору кількох іконок",
+    "Safari jest otwarte": "Safari відкрито",
+    "Safari jest zamknięte": "Safari закрито",
+    "Przejdź do Safari i naciśnij ⌘Q, aby zastosować zmiany.": "Перейдіть до Safari й натисніть ⌘Q, щоб застосувати зміни."
   }
 }

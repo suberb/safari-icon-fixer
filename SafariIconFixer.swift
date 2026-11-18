@@ -386,12 +386,24 @@ func fetchIcon(_ host: String) async -> Pending? {
     @State private var resetScope: FavoriteScope = .root
     @State private var resetTrackedOnly = false
     @State private var confirmReset = false
+    @State private var safariOpen = true
+    private func refreshSafariStatus() { safariOpen = store.safariRunning }
+    private func requireClosedSafari() -> Bool {
+        let isOpen = store.safariRunning
+        safariOpen = isOpen
+        guard !isOpen else {
+            message = l10n("Przejdź do Safari i naciśnij ⌘Q, aby zastosować zmiany.")
+            return false
+        }
+        return true
+    }
     private var scopedCustom: Set<String> { Set(scoped.filter { customHosts.contains($0.host) && $0.registered }.map { $0.host }) }
     func requestReset(_ hosts: Set<String>, in range: FavoriteScope, trackedOnly: Bool = false) {
-        guard !hosts.isEmpty, !busy, !permissionDenied else { return }
+        guard !hosts.isEmpty, !busy, !permissionDenied, requireClosedSafari() else { return }
         resetHosts = hosts; resetScope = range; resetTrackedOnly = trackedOnly; confirmReset = true
     }
     func executeReset() {
+        guard requireClosedSafari() else { return }
         do {
             let saved = try store.reset(resetHosts, scope: resetScope, trackedOnly: resetTrackedOnly)
             for host in resetHosts { pending.removeValue(forKey: host); replacements.remove(host); marked.remove(host) }
@@ -640,6 +652,7 @@ func fetchIcon(_ host: String) async -> Pending? {
     }
     func write() {
         guard !permissionDenied else { showPermission = true; return }
+        guard requireClosedSafari() else { return }
         let batch = scopedPending
         do {
             let (backup,count) = try store.apply(batch,allowingReplacement:replacements,scope:scope)
@@ -648,7 +661,7 @@ func fetchIcon(_ host: String) async -> Pending? {
             scan(); message = l10n("Zapisano {0} ikon. Kopia: {1}. Otwórz Safari i sprawdź efekt.", String(describing: count), String(describing: backup.lastPathComponent))
         } catch { handleOperationError(error) }
     }
-    func selectBackup() { let p = NSOpenPanel(); p.directoryURL = store.backups; p.canChooseDirectories = true; p.canChooseFiles = false; guard p.runModal() == .OK, let u = p.url else {return}; chosenBackup = u; confirmRestore = true }
+    func selectBackup() { guard requireClosedSafari() else { return }; let p = NSOpenPanel(); p.directoryURL = store.backups; p.canChooseDirectories = true; p.canChooseFiles = false; guard p.runModal() == .OK, let u = p.url else {return}; chosenBackup = u; confirmRestore = true }
     func tile(_ data: Data?, fallback: String, size: CGFloat) -> some View { Group { if let data, let image = NSImage(data:data) { Image(nsImage:image).resizable().scaledToFit() } else { ZStack { RoundedRectangle(cornerRadius:size*0.22).fill(.gray.opacity(0.2)); Text(fallback.prefix(1).uppercased()).font(.system(size:size*0.45,weight:.medium)).foregroundStyle(.secondary) } } }.frame(width:size,height:size) }
     private var purple: Color { Color(red: 137.0/255, green: 96.0/255, blue: 232.0/255) }
     private var surface: Color { Color(nsColor: .controlBackgroundColor) }
@@ -906,6 +919,24 @@ func fetchIcon(_ host: String) async -> Pending? {
             }
         }.padding(16).frame(minWidth: 255, idealWidth: 305, maxWidth: 400, maxHeight: .infinity).background(.regularMaterial)
     }
+    private var safariStatus: some View {
+        HStack(alignment: .center, spacing: 9) {
+            Image(systemName: safariOpen ? "exclamationmark.circle.fill" : "checkmark.circle.fill")
+                .foregroundStyle(safariOpen ? Color.orange : Color.green)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(safariOpen ? l10n("Safari jest otwarte") : l10n("Safari jest zamknięte"))
+                    .font(.callout.weight(.medium))
+                if safariOpen {
+                    Text(l10n("Przejdź do Safari i naciśnij ⌘Q, aby zastosować zmiany."))
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Spacer(minLength: 0)
+        }.padding(9)
+            .background((safariOpen ? Color.orange : Color.green).opacity(0.10), in: RoundedRectangle(cornerRadius: 9))
+            .accessibilityElement(children: .combine)
+    }
     private var footer: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 7) {
@@ -913,13 +944,14 @@ func fetchIcon(_ host: String) async -> Pending? {
                 Text(message).font(.caption).foregroundStyle(.secondary).lineLimit(2).help(message).textSelection(.enabled)
                 Spacer(minLength: 0)
             }
+            safariStatus
             if !pending.isEmpty || undoPending != nil {
                 HStack(spacing: 8) {
                     Button { clearSelection(); scope = .all; filter = l10n("Gotowe"); search = ""; previewMode = false } label: { Text(l10n("{0} zmian", String(pending.count))).font(.callout.weight(.medium)).foregroundStyle(purple) }.buttonStyle(.plain).disabled(pending.isEmpty || busy)
                     Spacer(minLength: 0)
                     Button { undoDraft() } label: { Image(systemName: "arrow.uturn.backward") }.help(l10n("Cofnij przygotowaną zmianę")).disabled(undoPending == nil || busy)
                     Button(l10n("Odrzuć zmianę")) { confirmDiscard = true }.disabled(scopedPending.isEmpty || busy)
-                    Button(l10n("Zastosuj ({0})", String(scopedPending.count))) { confirm = true }.buttonStyle(.borderedProminent).disabled(busy || permissionDenied || scopedPending.isEmpty)
+                    Button(l10n("Zastosuj ({0})", String(scopedPending.count))) { if requireClosedSafari() { confirm = true } }.buttonStyle(.borderedProminent).disabled(busy || permissionDenied || scopedPending.isEmpty || safariOpen)
                 }.padding(9).background(purple.opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
             }
         }.fixedSize(horizontal: false, vertical: true)
@@ -971,7 +1003,10 @@ func fetchIcon(_ host: String) async -> Pending? {
         }
         .frame(minWidth: 850, minHeight: 500)
         .tint(purple)
-        .onAppear { filter = filterChoices.indices.contains(storedFilter) ? filterChoices[storedFilter] : filterChoices[0]; scan() }
+        .onAppear { refreshSafariStatus(); filter = filterChoices.indices.contains(storedFilter) ? filterChoices[storedFilter] : filterChoices[0]; scan() }
+        .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didLaunchApplicationNotification)) { _ in refreshSafariStatus() }
+        .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didTerminateApplicationNotification)) { _ in refreshSafariStatus() }
+        .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in refreshSafariStatus() }
         .task { updates.checkAtLaunch() }
         .sheet(isPresented: $showAbout) { AppAboutView(updates: updates) }
         .onReceive(NotificationCenter.default.publisher(for: .sifAbout)) { _ in showAbout = true }
@@ -985,6 +1020,7 @@ func fetchIcon(_ host: String) async -> Pending? {
         }
         .sheet(isPresented: $showPermission, onDismiss: { waitingForPermission = false }) { permissionSheet }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            refreshSafariStatus()
             if waitingForPermission && permissionDenied { runScan(presentPermission: false) }
             else if waitingForPermission { waitingForPermission = false }
         }
@@ -1046,7 +1082,7 @@ func fetchIcon(_ host: String) async -> Pending? {
         } message: {
             Text(l10n("Usunie obecną grafikę i własne tło. Safari spróbuje pobrać domyślną ikonę; do tego czasu może wyświetlać literę. Dotyczy też wspólnych ikon w innych folderach. Zamknij Safari (⌘Q). Powstanie kopia. Zakładki pozostaną bez zmian."))
         }
-        .alert(l10n("Przywrócić cały cache ikon?"),isPresented:$confirmRestore) { Button(l10n("Anuluj"),role:.cancel){}; Button(l10n("Przywróć"),role:.destructive) { if let saved = chosenBackup { do { let displaced = try store.restore(saved); pending = [:]; replacements = []; marked = []; undoPending = nil; scan(); message = l10n("Przywrócono kopię. Poprzedni cache: {0}.", String(describing: displaced.lastPathComponent)) } catch {handleOperationError(error)} } } } message: { Text(l10n("Wymaga zamknięcia Safari. Bieżący folder również zostanie zachowany jako kopia.")) }
+        .alert(l10n("Przywrócić cały cache ikon?"),isPresented:$confirmRestore) { Button(l10n("Anuluj"),role:.cancel){}; Button(l10n("Przywróć"),role:.destructive) { guard requireClosedSafari() else { return }; if let saved = chosenBackup { do { let displaced = try store.restore(saved); pending = [:]; replacements = []; marked = []; undoPending = nil; scan(); message = l10n("Przywrócono kopię. Poprzedni cache: {0}.", String(describing: displaced.lastPathComponent)) } catch {handleOperationError(error)} } } } message: { Text(l10n("Wymaga zamknięcia Safari. Bieżący folder również zostanie zachowany jako kopia.")) }
     }
 }
 private enum StudioPreset: CaseIterable {

@@ -1,12 +1,8 @@
-## Safari Icon Fixer 0.6.0 — Amethyst
+## Safari Icon Fixer 0.6.1 — Refined identity
 
-A visual workspace for your Safari Favorites.
+- New minimalist graphite-and-amethyst app icon.
+- Live Safari status and ⌘Q guidance before applying changes. Reset and restore also require Safari (including Technology Preview) to be closed.
+- New product website with interactive illustrative before/after and Color Studio previews, light/dark themes and updated sharing artwork.
+- Six interface languages, existing icon backups, compatibility checks and signed Sparkle update pipeline retained.
 
-- A quieter, resizable library with smart filters and Command/Shift selection.
-- Color Studio: background, margins, display style, live inspector preview and batch presets.
-- Before/after Safari simulation with light and dark backgrounds.
-- Drop local files or supported image data onto icon tiles; full image search remains available in the editor.
-- Restore a previous graphic from local backups; undo or discard staged changes, and recover compatible staged changes after restarting.
-- Six languages, new product page and the existing signed Sparkle updater.
-
-The preview is a simulation, not a live Safari view. For icon changes, quit Safari before applying. The DMG is ad hoc signed, not Apple-notarized. Verify results after installation; if macOS asks for approval or Full Disk Access, grant it only for this trusted copy. Full macOS usability, VoiceOver, image drag/drop, and Sparkle self-installation should be confirmed on a real Mac.
+The app is ad hoc signed and not Apple-notarized. Approve only a trusted copy in System Settings, if required. Safari's cache is undocumented; previews are illustrative.

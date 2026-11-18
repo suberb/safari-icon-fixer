@@ -15,11 +15,11 @@ macOS · Apple Silicon · Free · No account required
 
 </div>
 
-![Safari Icon Fixer — an illustrative app preview with fictional Favorites and folders](docs/media/hero.jpg)
+![Safari Icon Fixer — illustrative Favorites preview with fictional websites](docs/media/hero.jpg)
 
 ## Give your Favorites a fresh look
 
-![Illustrative comparison of generic letter tiles and restored website icons, using demo bookmarks](docs/media/before-after.svg)
+![Illustrative comparison of generic letter tiles and restored sample Favorites icons](docs/media/before-after.svg)
 
 - **Repair** missing icons or force-refresh the cached ones Safari isn't showing.
 - **Personalize** with images from the web, custom backgrounds, logo margins, or colors taken from an icon.

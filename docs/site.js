@@ -13,3 +13,21 @@
     document.getElementById('release-label').textContent = `v${version} · Apple Silicon · macOS 13+ · Free`;
   } catch (_) { /* The standard releases link is always available. */ }
 })();
+// Demo only: never reads bookmarks or contacts Safari.
+(() => {
+  const root = document.documentElement;
+  const theme = document.getElementById('theme');
+  const media = window.matchMedia('(prefers-color-scheme: dark)');
+  let saved;
+  try { saved = localStorage.getItem('sif-site-theme'); } catch (_) {}
+  const applyTheme = value => { root.dataset.theme = value; theme.setAttribute('aria-label', value === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'); };
+  applyTheme(saved === 'light' || saved === 'dark' ? saved : media.matches ? 'dark' : 'light');
+  theme.addEventListener('click', () => { const next = root.dataset.theme === 'dark' ? 'light' : 'dark'; applyTheme(next); try { localStorage.setItem('sif-site-theme',next); } catch (_) {} });
+  const demo = document.getElementById('demo'), before = document.querySelector('[data-before]'), after = document.querySelector('[data-after]');
+  const setRestored = restored => { demo.dataset.restored = String(restored); before.setAttribute('aria-pressed', String(!restored)); after.setAttribute('aria-pressed', String(restored)); document.getElementById('demo-status').textContent = restored ? '✦ Restored' : 'Generic letters'; };
+  before.addEventListener('click',()=>setRestored(false)); after.addEventListener('click',()=>setRestored(true));
+  const studio = document.getElementById('studio-icon');
+  const swatches = [...document.querySelectorAll('.swatch')];
+  for (const btn of swatches) btn.addEventListener('click',()=> { studio.style.setProperty('--studio-color',btn.dataset.color); studio.style.setProperty('--studio-ink',btn.dataset.ink); swatches.forEach(other=>other.setAttribute('aria-pressed',String(btn===other))); });
+  const range=document.getElementById('logo-size');range.addEventListener('input',()=>{ studio.style.setProperty('--studio-size',range.value+'%'); document.getElementById('size-label').textContent=range.value+'%'; });
+})();

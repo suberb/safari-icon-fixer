@@ -1,5 +1,10 @@
 # Historia wersji
 
+## 0.6.1 — Refined identity
+- New graphite and amethyst app icon, refreshed product website and marketing graphics.
+- Live Safari open/closed status, Cmd-Q guidance and preflight checks before applying, resetting or restoring icons.
+- All six interface languages; existing cache safeguards and signed Sparkle pipeline retained.
+
 ## 0.6.0 — Amethyst
 - Resizable, hideable sidebar and inspector; visual icon library with modifier selection, smart filters and remembered layout preferences.
 - Inline Color Studio, batch presets, file/image drag and drop, simulated Safari preview, individual icon history from local backups and one-step undo of staged changes.
