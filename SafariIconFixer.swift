@@ -4,6 +4,7 @@ import AppKit
 import CryptoKit
 import ImageIO
 import UniformTypeIdentifiers
+import QuickLook
 
 struct FixError: LocalizedError { let message: String; var errorDescription: String? { message } }
 func fail(_ s: String) -> FixError { FixError(message: s) }
@@ -425,6 +426,12 @@ func fetchIcon(_ host: String) async -> Pending? {
     @State private var anchor: String?
     @State private var confirmDiscard = false
     @State private var quickLook: Site?
+    @State private var nativePreviewURL: URL?
+    @State private var nativePreviewDirectory: URL?
+    @State private var keyboardScrollTarget: String?
+    @FocusState private var libraryFocused: Bool
+    @FocusState private var searchFocused: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showTechnical = false
     @State private var draftLoaded = false
     @State private var draftWritable = false
@@ -669,7 +676,34 @@ func fetchIcon(_ host: String) async -> Pending? {
             message = l10n("Przygotowano {0} ikon w zakresie. Nie zmieniono Safari. Niepowodzenia: {1}.", String(describing: scopedPending.count), String(describing: failures))
         }
     }
+    private var libraryCommandsAvailable: Bool {
+        !busy && !permissionDenied && !previewMode && !showAbout && !showPermission && !showBackups && iconEditor == nil && historySite == nil && quickLook == nil && nativePreviewURL == nil && !confirm && !confirmDiscard && !confirmReset && !confirmRestore
+    }
+    private func openNativePreview(_ item: Site) {
+        guard nativePreviewURL == nil else { return }
+        guard let data = pending[item.host]?.png ?? item.existing, let (png, _) = safePNG(data) else { quickLook = item; return }
+        let fm = FileManager.default
+        let directory = fm.temporaryDirectory.appendingPathComponent("SIF-QuickLook-" + UUID().uuidString, isDirectory: true)
+        do {
+            try fm.createDirectory(at: directory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+            let url = directory.appendingPathComponent("Icon.png")
+            try png.write(to: url, options: .atomic)
+            nativePreviewDirectory = directory
+            nativePreviewURL = url
+        } catch { try? fm.removeItem(at: directory); quickLook = item }
+    }
+    private func moveLibrarySelection(_ direction: MoveCommandDirection, columns: Int) {
+        guard libraryFocused, libraryCommandsAvailable else { return }
+        let order = shown.map(\.host)
+        let offset: Int
+        switch direction { case .left: offset = -1; case .right: offset = 1; case .up: offset = -columns; case .down: offset = columns; @unknown default: return }
+        guard let target = LibrarySelection.keyboardTarget(ordered: order, current: selected, offset: offset) else { return }
+        let extend = NSEvent.modifierFlags.contains(.shift)
+        let next = LibrarySelection.click(target, ordered: order, selected: marked, anchor: anchor, extend: extend, toggle: false)
+        studioEditingHost = nil; marked = next.selected; anchor = next.anchor; selected = target; keyboardScrollTarget = target
+    }
     private func selectSite(_ item: Site) {
+        libraryFocused = true
         let flags = NSEvent.modifierFlags
         let selection = LibrarySelection.click(item.host, ordered: shown.map(\.host), selected: marked, anchor: anchor, extend: flags.contains(.shift), toggle: flags.contains(.command))
         marked = selection.selected
@@ -741,6 +775,12 @@ func fetchIcon(_ host: String) async -> Pending? {
     func toggleMarked(_ host: String, _ value: Bool) {
         if value { marked.insert(host) } else { marked.remove(host) }
     }
+    private func visualStatus(_ item: Site) -> String {
+        if pending[item.host] != nil { return l10n("Gotowa do zapisania") }
+        if recoveryHosts.contains(item.host) { return l10n("Własna ikona została zmieniona") }
+        if item.needsRepair { return item.status }
+        return customHosts.contains(item.host) ? l10n("Własna ikona") : item.status
+    }
     func siteRow(_ site: Site) -> some View {
         Button { selectSite(site) } label: {
             HStack(spacing: 10) {
@@ -752,10 +792,11 @@ func fetchIcon(_ host: String) async -> Pending? {
                 Spacer()
                 Text(pending[site.host] != nil ? l10n("Gotowa") : (recoveryHosts.contains(site.host) ? l10n("Własna ikona została zmieniona") : (customHosts.contains(site.host) ? l10n("Własna") : site.status)))
                     .font(.caption).foregroundStyle(pending[site.host] != nil ? Color.green : Color.secondary)
-            }.padding(9).background(marked.contains(site.host) ? purple.opacity(0.16) : Color.clear, in: RoundedRectangle(cornerRadius: 8)).contentShape(Rectangle())
-        }.buttonStyle(.plain).accessibilityLabel(site.title).accessibilityAddTraits(marked.contains(site.host) ? .isSelected : [])
+            }.padding(9).contentShape(Rectangle())
+        }.buttonStyle(.plain)
+        .modifier(IconInteractionFeedback(selected: marked.contains(site.host), accent: purple, radius: 8, onDrop: { acceptDrop($0, onto: site) }))
+        .accessibilityLabel(site.title).accessibilityValue(visualStatus(site)).accessibilityAddTraits(marked.contains(site.host) ? .isSelected : [])
         .contextMenu { siteMenu(site) }
-        .onDrop(of: [UTType.fileURL, UTType.image], isTargeted: nil) { acceptDrop($0, onto: site) }
     }
     func cacheDetails(_ site: Site) -> String {
         let flags = site.downloadFlags.map { String($0) } ?? l10n("brak")
@@ -838,10 +879,10 @@ func fetchIcon(_ host: String) async -> Pending? {
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center, spacing: 9) {
-                Button { showSidebar.toggle() } label: { Image(systemName: "sidebar.left") }.help(l10n("Pasek boczny"))
+                Button { showSidebar.toggle() } label: { Image(systemName: "sidebar.left") }.help(l10n("Pasek boczny")).accessibilityLabel(l10n("Pasek boczny"))
                 Spacer(minLength: 0)
-                Button(action: scan) { Image(systemName: "arrow.clockwise") }.help(l10n("Przeskanuj Ulubione")).disabled(busy)
-                Button { showInspector.toggle() } label: { Image(systemName: "sidebar.right") }.help(l10n("Panel edycji"))
+                Button(action: scan) { Image(systemName: "arrow.clockwise") }.help(l10n("Przeskanuj Ulubione")).accessibilityLabel(l10n("Przeskanuj Ulubione")).disabled(busy)
+                Button { showInspector.toggle() } label: { Image(systemName: "sidebar.right") }.help(l10n("Panel edycji")).accessibilityLabel(l10n("Panel edycji"))
             }.buttonStyle(.borderless)
             HStack(alignment: .center) {
                 VStack(alignment: .leading, spacing: 5) {
@@ -880,8 +921,8 @@ func fetchIcon(_ host: String) async -> Pending? {
             HStack(spacing: 8) {
                 HStack(spacing: 7) {
                     Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                    TextField(l10n("Szukaj strony…"), text: $search).textFieldStyle(.plain)
-                    if !search.isEmpty { Button { search = "" } label: { Image(systemName: "xmark.circle.fill") }.buttonStyle(.plain).foregroundStyle(.secondary) }
+                    TextField(l10n("Szukaj strony…"), text: $search).textFieldStyle(.plain).focused($searchFocused).accessibilityLabel(l10n("Szukaj strony…"))
+                    if !search.isEmpty { Button { search = "" } label: { Image(systemName: "xmark.circle.fill") }.buttonStyle(.plain).foregroundStyle(.secondary).accessibilityLabel(l10n("Wyczyść wyszukiwanie")) }
                 }.padding(8).background(surface, in: RoundedRectangle(cornerRadius: 8))
                 Picker(l10n("Status"), selection: $filter) { ForEach([l10n("Wszystkie"), l10n("Brakujące"), l10n("Gotowe"), l10n("Własne")], id: \.self) { Text($0).tag($0) } }.labelsHidden().frame(maxWidth: 145)
             }
@@ -896,7 +937,7 @@ func fetchIcon(_ host: String) async -> Pending? {
             } label: { Label(l10n("Zaznaczenie ({0})", String(markedSites.count)), systemImage: "checkmark.square") }
             Spacer(minLength: 0)
             if !markedSites.isEmpty {
-                Button(action: prepareMarked) { Image(systemName: "arrow.clockwise") }.help(l10n("Napraw wyświetlanie"))
+                Button(action: prepareMarked) { Image(systemName: "arrow.clockwise") }.help(l10n("Napraw wyświetlanie")).accessibilityLabel(l10n("Napraw wyświetlanie"))
                 Menu {
                     ForEach(StudioPreset.allCases, id: \.self) { preset in Button(preset.label) { preparePreset(preset, targets: markedSites) } }
                     Divider()
@@ -923,7 +964,8 @@ func fetchIcon(_ host: String) async -> Pending? {
         Button(l10n("Personalizuj ikonę")) { iconEditor = item }.disabled(!item.registered || busy)
         Button(l10n("Napraw wyświetlanie")) { prepareSites([item]) }.disabled(!item.registered || busy)
         Button(l10n("Importuj grafikę")) { choose(item) }.disabled(!item.registered || busy)
-        Button(l10n("Podgląd")) { quickLook = item }
+        Button(l10n("Szybki podgląd")) { openNativePreview(item) }
+        Button(l10n("Porównaj przed i po")) { quickLook = item }
         Button(l10n("Historia ikony")) { openHistory(item) }
         if recoveryHosts.contains(item.host) {
             Button(l10n("Odzyskaj własną ikonę")) { recoverProtectedIcon(item) }.disabled(busy || pending[item.host] != nil)
@@ -945,13 +987,12 @@ func fetchIcon(_ host: String) async -> Pending? {
                 }
                 Text(item.title).font(.callout.weight(.medium)).lineLimit(1)
             }.padding(.vertical, 10).padding(.horizontal, 4).frame(maxWidth: .infinity)
-                .background(isSelected ? purple.opacity(0.15) : Color.clear, in: RoundedRectangle(cornerRadius: 12))
-                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(isSelected ? purple.opacity(0.75) : Color.clear, lineWidth: 1.2))
                 .contentShape(Rectangle())
-        }.buttonStyle(.plain).help(item.title + " · " + item.status).accessibilityLabel(item.title + ", " + item.status)
+        }.buttonStyle(.plain)
+        .modifier(IconInteractionFeedback(selected: isSelected, accent: purple, radius: 12, onDrop: { acceptDrop($0, onto: item) }))
+        .help(item.title + " · " + visualStatus(item)).accessibilityLabel(item.title).accessibilityValue(visualStatus(item))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
         .contextMenu { siteMenu(item) }
-        .onDrop(of: [UTType.fileURL, UTType.image], isTargeted: nil) { acceptDrop($0, onto: item) }
     }
     private var safariPreview: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -978,6 +1019,39 @@ func fetchIcon(_ host: String) async -> Pending? {
             Text(l10n("Symulacja wyglądu, nie zrzut Safari. Kolejność może się różnić.")).font(.caption).foregroundStyle(.secondary)
         }.padding(3)
     }
+    @ViewBuilder private func libraryKeyboard<Content: View>(_ content: Content, columns: Int) -> some View {
+        let focused = content.focusable().focused($libraryFocused)
+            .onMoveCommand { direction in moveLibrarySelection(direction, columns: columns) }
+        if #available(macOS 14.0, *) {
+            focused.onKeyPress(.space) {
+                guard libraryFocused, libraryCommandsAvailable, let item = site else { return .ignored }
+                openNativePreview(item); return .handled
+            }
+        } else { focused }
+    }
+    private var keyboardLibrary: some View {
+        GeometryReader { geometry in
+            let minimum = max(90.0, iconSize + 24)
+            let columns = gridMode ? LibrarySelection.gridColumns(width: Double(geometry.size.width) - 8, minimum: minimum, spacing: 9) : 1
+            ScrollViewReader { proxy in
+                libraryKeyboard(ScrollView {
+                    if gridMode {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: CGFloat(minimum)), spacing: 9)], spacing: 10) {
+                            ForEach(shown) { iconCard($0).id($0.host) }
+                        }.padding(4)
+                    } else {
+                        LazyVStack(spacing: 2) { ForEach(shown) { siteRow($0).id($0.host) } }.padding(2)
+                    }
+                }, columns: columns)
+                .onChange(of: keyboardScrollTarget) { target in
+                    guard let target else { return }
+                    if reduceMotion { proxy.scrollTo(target) }
+                    else { withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(target) } }
+                    keyboardScrollTarget = nil
+                }
+            }
+        }
+    }
     private var library: some View {
         VStack(spacing: 0) {
             if shown.isEmpty {
@@ -988,16 +1062,13 @@ func fetchIcon(_ host: String) async -> Pending? {
                     Button(l10n("Wszystkie")) { scope = .all; filter = l10n("Wszystkie"); search = "" }
                 }.frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if previewMode { safariPreview }
-            else if gridMode {
-                ScrollView { LazyVGrid(columns: [GridItem(.adaptive(minimum: max(90, iconSize + 24)), spacing: 9)], spacing: 10) { ForEach(shown) { iconCard($0) } }.padding(4) }
-            } else {
-                ScrollView { LazyVStack(spacing: 2) { ForEach(shown) { siteRow($0) } }.padding(2) }
-            }
+            else { keyboardLibrary }
         }.frame(minWidth: 330, maxWidth: .infinity, maxHeight: .infinity)
     }
     private func iconActions(_ item: Site) -> some View {
         Menu {
-            Button(l10n("Podgląd")) { quickLook = item }
+            Button(l10n("Szybki podgląd")) { openNativePreview(item) }
+            Button(l10n("Porównaj przed i po")) { quickLook = item }
             Button(l10n("Importuj grafikę")) { choose(item) }.disabled(busy || !item.registered)
             Button(l10n("Napraw wyświetlanie")) { prepareSites([item]) }.disabled(busy || !item.registered || pending[item.host] != nil)
             Button(l10n("Historia ikony")) { openHistory(item) }.disabled(busy)
@@ -1197,7 +1268,10 @@ func fetchIcon(_ host: String) async -> Pending? {
         .onChange(of: busy) { value in DraftProtection.shared.busy = value; if !value { persistPreparedDraft() } }
         .onReceive(NotificationCenter.default.publisher(for: .sifUndoDraft)) { _ in undoDraft() }
         .onReceive(NotificationCenter.default.publisher(for: .sifSelectAll)) { _ in if !busy && !permissionDenied { selectAllVisible() } }
-        .onReceive(NotificationCenter.default.publisher(for: .sifQuickLook)) { _ in if !busy, let item = site { quickLook = item } }
+        .onReceive(NotificationCenter.default.publisher(for: .sifQuickLook)) { _ in if libraryCommandsAvailable, let item = site { openNativePreview(item) } }
+        .onReceive(NotificationCenter.default.publisher(for: .sifCompare)) { _ in if libraryCommandsAvailable, let item = site { quickLook = item } }
+        .onReceive(NotificationCenter.default.publisher(for: .sifSearch)) { _ in if libraryCommandsAvailable { searchFocused = true } }
+        .onReceive(NotificationCenter.default.publisher(for: .sifRescan)) { _ in if !busy && iconEditor == nil && !showBackups && !showPermission { scan() } }
         .sheet(isPresented: $showBackups, onDismiss: {
             if chosenBackup != nil, requireClosedSafari() { confirmRestore = true }
             else { chosenBackup = nil }
@@ -1235,6 +1309,13 @@ func fetchIcon(_ host: String) async -> Pending? {
                 HStack { Spacer(); Button(l10n("Zamknij")) { historySite = nil }.keyboardShortcut(.cancelAction) }
             }.padding(24).frame(width: 470)
         }
+        .quickLookPreview($nativePreviewURL)
+        .onChange(of: nativePreviewURL) { current in
+            if current == nil, let directory = nativePreviewDirectory {
+                try? FileManager.default.removeItem(at: directory)
+                nativePreviewDirectory = nil
+            }
+        }
         .sheet(item: $quickLook) { item in
             VStack(spacing: 16) {
                 HStack(spacing: 20) {
@@ -1257,6 +1338,27 @@ func fetchIcon(_ host: String) async -> Pending? {
             Text(l10n("Usunie obecną grafikę i własne tło. Safari spróbuje pobrać domyślną ikonę; do tego czasu może wyświetlać literę. Dotyczy też wspólnych ikon w innych folderach. Zamknij Safari (⌘Q). Powstanie kopia. Zakładki pozostaną bez zmian."))
         }
         .alert(l10n("Przywrócić cały cache ikon?"),isPresented:$confirmRestore) { Button(l10n("Anuluj"),role:.cancel){}; Button(l10n("Przywróć"),role:.destructive) { guard !busy, requireClosedSafari() else { return }; if let saved = chosenBackup { chosenBackup = nil; do { let displaced = try store.restore(saved); pending = [:]; replacements = []; marked = []; undoPending = nil; runScan(presentPermission: true, completionMessage: l10n("Przywrócono kopię. Poprzedni cache: {0}.", String(describing: displaced.lastPathComponent))) } catch {handleOperationError(error)} } } } message: { Text(l10n("Wymaga zamknięcia Safari. Bieżący folder również zostanie zachowany jako kopia.") + (pending.isEmpty ? "" : "\n\n" + l10n("Przywrócenie całej kopii odrzuci przygotowane zmiany ({0}).", String(pending.count)))) }
+    }
+}
+@MainActor private struct IconInteractionFeedback: ViewModifier {
+    let selected: Bool
+    let accent: Color
+    let radius: CGFloat
+    let onDrop: ([NSItemProvider]) -> Bool
+    @State private var hovered = false
+    @State private var targeted = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.isEnabled) private var enabled
+    func body(content: Content) -> some View {
+        content
+            .background(RoundedRectangle(cornerRadius: radius).fill(targeted ? accent.opacity(0.22) : selected ? accent.opacity(0.14) : hovered && enabled ? Color.primary.opacity(0.045) : Color.clear))
+            .overlay(RoundedRectangle(cornerRadius: radius).strokeBorder(targeted ? accent : selected ? accent.opacity(0.8) : Color.clear, lineWidth: targeted ? 2 : 1.2).allowsHitTesting(false))
+            .contentShape(Rectangle())
+            .onHover { hovered = $0 }
+            .onDrop(of: [UTType.fileURL, UTType.image], isTargeted: $targeted) { providers in enabled && onDrop(providers) }
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: hovered)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: targeted)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: selected)
     }
 }
 private enum StudioPreset: CaseIterable {
@@ -1284,6 +1386,8 @@ private enum StudioPreset: CaseIterable {
     @State private var edited = false
     @State private var advanced = false
     @State private var renderFailed = false
+    @State private var selectedPreset: StudioPreset?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private func render() {
         guard let art, art.separate else { return }
         guard let result = composeArtwork(art, background: background, color: NSColor(color), inset: inset, lightening: lightening) else {
@@ -1301,7 +1405,7 @@ private enum StudioPreset: CaseIterable {
     }
     private func resetInput() {
         art = IconArtwork(data); rendered = nil; edited = false; renderFailed = false
-        background = .original; color = .white; lightening = 0.40; inset = 0.12
+        background = .original; color = .white; lightening = 0.40; inset = 0.12; selectedPreset = nil
         if let art, art.separate { inset = max(0, min(0.30, (1 - Double(max(art.bounds.width, art.bounds.height)) / 256) / 2)) }
         style = initialDisplay.map { $0 == .fullTile ? 1 : 2 } ?? 0
         lastEmission = nil
@@ -1314,11 +1418,15 @@ private enum StudioPreset: CaseIterable {
     private func swatch(_ preset: StudioPreset) -> some View {
         let tint = preset == .soft ? Color(nsColor: nsColor((art?.dominant ?? IconRGB(r: 128, g: 128, b: 128)).lightened(lightening))) : Color(nsColor: preset.color)
         return Button {
-            background = preset.background; color = Color(nsColor: preset.color); render()
+            background = preset.background; color = Color(nsColor: preset.color); selectedPreset = preset; render()
         } label: {
-            RoundedRectangle(cornerRadius: 7).fill(tint).frame(width: 27, height: 25)
-                .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Color.secondary.opacity(0.25)))
+            RoundedRectangle(cornerRadius: 8).fill(tint).frame(width: 29, height: 28)
+                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.primary.opacity(0.14)))
+                .padding(3)
+                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(selectedPreset == preset ? Color.accentColor : Color.clear, lineWidth: 2))
         }.buttonStyle(.plain).help(preset.label).accessibilityLabel(preset.label)
+            .accessibilityAddTraits(selectedPreset == preset ? .isSelected : [])
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: selectedPreset)
     }
     private var preview: some View {
         VStack(spacing: 12) {
@@ -1342,10 +1450,10 @@ private enum StudioPreset: CaseIterable {
             if art?.separate == true {
                 HStack(spacing: 6) {
                     ForEach(StudioPreset.allCases, id: \.self) { preset in swatch(preset) }
-                    ColorPicker(l10n("Własny kolor"), selection: Binding(get: { color }, set: { color = $0; background = .custom; render() }), supportsOpacity: false).labelsHidden()
+                    ColorPicker(l10n("Własny kolor"), selection: Binding(get: { color }, set: { color = $0; background = .custom; selectedPreset = nil; render() }), supportsOpacity: false).labelsHidden()
                     Spacer(minLength: 0)
                 }
-                Picker(l10n("Tło"), selection: Binding(get: { background }, set: { background = $0; render() })) {
+                Picker(l10n("Tło"), selection: Binding(get: { background }, set: { background = $0; selectedPreset = nil; render() })) {
                     ForEach(IconBackground.allCases) { Text(l10n($0.rawValue)).tag($0) }
                 }
                 HStack { Text(l10n("Margines logo")); Spacer(); Text("\(Int(inset * 100))%").monospacedDigit().foregroundStyle(.secondary) }.font(.caption)
@@ -1376,9 +1484,11 @@ private enum StudioPreset: CaseIterable {
             }
             if staged {
                 Label(l10n("Gotowa do zapisania"), systemImage: "checkmark.circle.fill")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.caption.weight(.medium)).foregroundStyle(Color.accentColor)
+                    .padding(.vertical, 5)
             }
-            Text(l10n("Edycja trafia do szkicu. Zastosuj zapisze zmiany w Safari.")).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            Text(l10n("Edycja trafia do szkicu. Zastosuj zapisze zmiany w Safari."))
+                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }.onAppear { resetInput() }
         .onChange(of: input) { value in
             // Acknowledge our own edit without flattening artwork or resetting slider values.
@@ -1407,6 +1517,9 @@ extension Notification.Name {
     static let sifUndoDraft = Notification.Name("SIF.UndoDraft")
     static let sifSelectAll = Notification.Name("SIF.SelectAll")
     static let sifQuickLook = Notification.Name("SIF.QuickLook")
+    static let sifCompare = Notification.Name("SIF.Compare")
+    static let sifSearch = Notification.Name("SIF.Search")
+    static let sifRescan = Notification.Name("SIF.Rescan")
 }
 @main struct SafariIconFixerApp: App {
     @NSApplicationDelegateAdaptor(DraftProtection.self) private var appDelegate
@@ -1417,7 +1530,12 @@ extension Notification.Name {
                 CommandMenu(l10n("Ikony")) {
                     Button(l10n("Cofnij przygotowaną zmianę")) { NotificationCenter.default.post(name: .sifUndoDraft, object: nil) }.keyboardShortcut("z", modifiers: [.command, .option])
                     Button(l10n("Zaznacz widoczne")) { NotificationCenter.default.post(name: .sifSelectAll, object: nil) }.keyboardShortcut("a", modifiers: [.command, .shift])
-                    Button(l10n("Podgląd")) { NotificationCenter.default.post(name: .sifQuickLook, object: nil) }.keyboardShortcut("y", modifiers: [.command])
+                    Divider()
+                    Button(l10n("Szybki podgląd")) { NotificationCenter.default.post(name: .sifQuickLook, object: nil) }.keyboardShortcut("y", modifiers: [.command])
+                    Button(l10n("Porównaj przed i po")) { NotificationCenter.default.post(name: .sifCompare, object: nil) }.keyboardShortcut("y", modifiers: [.command, .shift])
+                    Divider()
+                    Button(l10n("Szukaj strony…")) { NotificationCenter.default.post(name: .sifSearch, object: nil) }.keyboardShortcut("f", modifiers: [.command])
+                    Button(l10n("Przeskanuj Ulubione")) { NotificationCenter.default.post(name: .sifRescan, object: nil) }.keyboardShortcut("r", modifiers: [.command])
                 }
                 CommandMenu(l10n("Język")) {
                     ForEach(AppLanguage.choices, id: \.code) { choice in

@@ -1,5 +1,11 @@
 # Historia wersji
 
+## 0.6.5 — Design Refinement
+- Native Quick Look for icon graphics (Command-Y; Space when the library has focus on macOS 14+). Compare before/after remains available with Shift-Command-Y.
+- Keyboard navigation in the icon library, search (Command-F), rescan (Command-R), hover and drop feedback, clearer selection and VoiceOver values. Animations respect Reduce Motion.
+- Color Studio highlights the chosen swatch; all edits still enter the local draft before manual Apply.
+- Fix the backup test’s equivalent temporary path spelling on macOS. Includes the unreleased 0.6.4 improvements below.
+
 ## 0.6.4 — Performance & Reliability
 - Live appearance edits stage automatically; a single undo point per editing session and debounced local draft writes, flushed at normal quit.
 - Background Favorites scanning with cancellation and thumbnail-only cache validation; cancel bulk icon downloads without discarding completed work.

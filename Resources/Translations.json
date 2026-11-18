@@ -317,7 +317,10 @@
     "Skanowanie anulowane. Zachowano poprzedni widok.": "Scan abgebrochen. Die vorherige Ansicht bleibt erhalten.",
     "Usuniesz tylko wybraną kopię. Bieżące ikony Safari i chronione grafiki pozostaną bez zmian.": "Nur die gewählte Sicherung wird entfernt. Aktuelle Safari-Symbole und geschützte Grafiken bleiben unverändert.",
     "Łączny rozmiar plików: {0}": "Dateigröße insgesamt: {0}",
-    "Przywrócenie całej kopii odrzuci przygotowane zmiany ({0}).": "Beim Wiederherstellen der gesamten Sicherung werden vorgemerkte Änderungen verworfen ({0})."
+    "Przywrócenie całej kopii odrzuci przygotowane zmiany ({0}).": "Beim Wiederherstellen der gesamten Sicherung werden vorgemerkte Änderungen verworfen ({0}).",
+    "Wyczyść wyszukiwanie": "Suche löschen",
+    "Szybki podgląd": "Schnellansicht",
+    "Porównaj przed i po": "Vorher und nachher vergleichen"
   },
   "en": {
     "Odzyskaj własną ikonę": "Restore custom icon",
@@ -637,7 +640,10 @@
     "Skanowanie anulowane. Zachowano poprzedni widok.": "Scan canceled. The previous view was kept.",
     "Usuniesz tylko wybraną kopię. Bieżące ikony Safari i chronione grafiki pozostaną bez zmian.": "Only the selected backup will be removed. Current Safari icons and protected artwork remain unchanged.",
     "Łączny rozmiar plików: {0}": "Total file size: {0}",
-    "Przywrócenie całej kopii odrzuci przygotowane zmiany ({0}).": "Restoring the entire backup discards prepared changes ({0})."
+    "Przywrócenie całej kopii odrzuci przygotowane zmiany ({0}).": "Restoring the entire backup discards prepared changes ({0}).",
+    "Wyczyść wyszukiwanie": "Clear search",
+    "Szybki podgląd": "Quick Look",
+    "Porównaj przed i po": "Compare before and after"
   },
   "es": {
     "Odzyskaj własną ikonę": "Recuperar icono personalizado",
@@ -957,7 +963,10 @@
     "Skanowanie anulowane. Zachowano poprzedni widok.": "Análisis cancelado. Se conserva la vista anterior.",
     "Usuniesz tylko wybraną kopię. Bieżące ikony Safari i chronione grafiki pozostaną bez zmian.": "Solo se eliminará la copia seleccionada. Los iconos actuales de Safari y las imágenes protegidas no cambiarán.",
     "Łączny rozmiar plików: {0}": "Tamaño total de archivos: {0}",
-    "Przywrócenie całej kopii odrzuci przygotowane zmiany ({0}).": "Restaurar la copia completa descarta los cambios preparados ({0})."
+    "Przywrócenie całej kopii odrzuci przygotowane zmiany ({0}).": "Restaurar la copia completa descarta los cambios preparados ({0}).",
+    "Wyczyść wyszukiwanie": "Borrar búsqueda",
+    "Szybki podgląd": "Vista rápida",
+    "Porównaj przed i po": "Comparar antes y después"
   },
   "fr": {
     "Odzyskaj własną ikonę": "Restaurer l’icône personnalisée",
@@ -1277,7 +1286,10 @@
     "Skanowanie anulowane. Zachowano poprzedni widok.": "Analyse annulée. La vue précédente a été conservée.",
     "Usuniesz tylko wybraną kopię. Bieżące ikony Safari i chronione grafiki pozostaną bez zmian.": "Seule la sauvegarde sélectionnée sera supprimée. Les icônes Safari actuelles et les images protégées restent inchangées.",
     "Łączny rozmiar plików: {0}": "Taille totale des fichiers : {0}",
-    "Przywrócenie całej kopii odrzuci przygotowane zmiany ({0}).": "Restaurer la sauvegarde complète abandonne les modifications préparées ({0})."
+    "Przywrócenie całej kopii odrzuci przygotowane zmiany ({0}).": "Restaurer la sauvegarde complète abandonne les modifications préparées ({0}).",
+    "Wyczyść wyszukiwanie": "Effacer la recherche",
+    "Szybki podgląd": "Coup d’œil",
+    "Porównaj przed i po": "Comparer avant et après"
   },
   "pl": {
     "Odzyskaj własną ikonę": "Odzyskaj własną ikonę",
@@ -1597,7 +1609,10 @@
     "Skanowanie anulowane. Zachowano poprzedni widok.": "Skanowanie anulowane. Zachowano poprzedni widok.",
     "Usuniesz tylko wybraną kopię. Bieżące ikony Safari i chronione grafiki pozostaną bez zmian.": "Usuniesz tylko wybraną kopię. Bieżące ikony Safari i chronione grafiki pozostaną bez zmian.",
     "Łączny rozmiar plików: {0}": "Łączny rozmiar plików: {0}",
-    "Przywrócenie całej kopii odrzuci przygotowane zmiany ({0}).": "Przywrócenie całej kopii odrzuci przygotowane zmiany ({0})."
+    "Przywrócenie całej kopii odrzuci przygotowane zmiany ({0}).": "Przywrócenie całej kopii odrzuci przygotowane zmiany ({0}).",
+    "Wyczyść wyszukiwanie": "Wyczyść wyszukiwanie",
+    "Szybki podgląd": "Szybki podgląd",
+    "Porównaj przed i po": "Porównaj przed i po"
   },
   "uk": {
     "Odzyskaj własną ikonę": "Відновити власну іконку",
@@ -1917,6 +1932,9 @@
     "Skanowanie anulowane. Zachowano poprzedni widok.": "Сканування скасовано. Попередній вигляд збережено.",
     "Usuniesz tylko wybraną kopię. Bieżące ikony Safari i chronione grafiki pozostaną bez zmian.": "Буде видалено лише вибрану копію. Поточні іконки Safari та захищені зображення не зміняться.",
     "Łączny rozmiar plików: {0}": "Загальний розмір файлів: {0}",
-    "Przywrócenie całej kopii odrzuci przygotowane zmiany ({0}).": "Відновлення всієї копії скасує підготовлені зміни ({0})."
+    "Przywrócenie całej kopii odrzuci przygotowane zmiany ({0}).": "Відновлення всієї копії скасує підготовлені зміни ({0}).",
+    "Wyczyść wyszukiwanie": "Очистити пошук",
+    "Szybki podgląd": "Швидкий перегляд",
+    "Porównaj przed i po": "Порівняти до і після"
   }
 }

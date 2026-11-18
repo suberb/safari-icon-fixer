@@ -1,8 +1,8 @@
-## Safari Icon Fixer 0.6.4 — Performance & Reliability
+## Safari Icon Fixer 0.6.5 — Design Refinement
 
-- Color Studio edits automatically enter the local draft. Review and apply when Safari is closed; no automatic Safari writes.
-- Consecutive edits to one icon share an undo point. Drafts are saved after a short pause and flushed on normal exit; if saving fails, quitting warns about possible loss.
-- Favorites scanning runs off the UI thread and can be canceled. Bulk downloads can also be canceled, keeping prepared icons.
-- Manage backups in the app: see dates and logical sizes, restore a selected snapshot or move an older one to Trash after confirmation. The newest valid backup is protected.
+- Native Quick Look for icon graphics: Command-Y, or Space with library focus on macOS 14 and later. Compare before/after with Shift-Command-Y.
+- Browse with arrow keys after focusing the library. Command-F searches; Command-R rescans.
+- Subtle hover and drag-target feedback, clearer palette selection, accessible labels and status values. Reduce Motion disables the added animations.
+- Includes 0.6.4: automatic local drafts, cancellable background scan/download, backup manager with protected newest snapshot. Fixes the macOS backup test path comparison.
 
-The app is ad hoc signed, not Apple-notarized. Safari's cache is undocumented; compatibility is not guaranteed. Automatic updates use the existing signed Sparkle feed.
+Safari must be closed before applying, resetting or restoring icons. The app is ad hoc signed, not Apple-notarized. Safari's cache is undocumented; compatibility is not guaranteed. Updates use the existing signed Sparkle feed.

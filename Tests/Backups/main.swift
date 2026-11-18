@@ -19,7 +19,10 @@ let entries = try BackupInventory.list(temp)
 precondition(entries.map(\.id) == [newest.lastPathComponent, older.lastPathComponent])
 precondition(entries.allSatisfy { $0.bytes == 20 })
 let removable = try BackupInventory.removable(temp, id: older.lastPathComponent)
-precondition(removable.path == older.path)
+// macOS temp paths can be spelled /var or /private/var (same directory).
+precondition(removable.resolvingSymlinksInPath().standardizedFileURL.path == older.resolvingSymlinksInPath().standardizedFileURL.path)
+precondition(removable.lastPathComponent == older.lastPathComponent)
+precondition(removable.resolvingSymlinksInPath().path != newest.resolvingSymlinksInPath().path)
 for id in [newest.lastPathComponent, decoy.lastPathComponent, "../outside"] {
     do { _ = try BackupInventory.removable(temp, id: id); fatalError("unsafe deletion") } catch {}
 }

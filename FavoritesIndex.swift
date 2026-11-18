@@ -60,6 +60,17 @@ struct FavoritesIndex {
 struct LibrarySelection {
     let selected: Set<String>
     let anchor: String?
+    static func gridColumns(width: Double, minimum: Double, spacing: Double) -> Int {
+        guard width.isFinite, minimum.isFinite, spacing.isFinite, width > 0, minimum > 0, spacing >= 0 else { return 1 }
+        return max(1, Int(min(10_000, floor((width + spacing) / (minimum + spacing)))))
+    }
+    static func keyboardTarget(ordered: [String], current: String?, offset: Int) -> String? {
+        guard !ordered.isEmpty else { return nil }
+        guard let current, let index = ordered.firstIndex(of: current) else { return ordered.first }
+        let (next, overflow) = index.addingReportingOverflow(offset)
+        if overflow { return offset < 0 ? ordered.first : ordered.last }
+        return ordered[max(0, min(ordered.count - 1, next))]
+    }
     static func click(_ item: String, ordered: [String], selected: Set<String>, anchor: String?, extend: Bool, toggle: Bool) -> LibrarySelection {
         guard let end = ordered.firstIndex(of: item) else { return .init(selected: [], anchor: nil) }
         let visible = selected.intersection(ordered)
