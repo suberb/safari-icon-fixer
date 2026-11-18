@@ -9,7 +9,7 @@ fi
 OUT="$PWD/build/Safari Icon Fixer.app"
 mkdir -p "$OUT/Contents/MacOS"
 cp Info.plist "$OUT/Contents/Info.plist"
-xcrun --sdk macosx swiftc -swift-version 5 -parse-as-library -O -target "$(uname -m)-apple-macos13.0" SafariIconFixer.swift -o "$OUT/Contents/MacOS/SafariIconFixer"
+xcrun --sdk macosx swiftc -swift-version 5 -parse-as-library -O -target "$(uname -m)-apple-macos13.0" FavoritesIndex.swift SafariIconFixer.swift -o "$OUT/Contents/MacOS/SafariIconFixer"
 codesign --force --sign - "$OUT"
 echo "Zbudowano: $OUT"
 open -R "$OUT"
