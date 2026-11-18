@@ -28,6 +28,8 @@ jobs:
           /tmp/sif-update-tests
           swiftc Localization.swift IconPixels.swift Personalization.swift Tests/Personalization/main.swift -o /tmp/sif-protection-tests
           /tmp/sif-protection-tests
+          swiftc BackupInventory.swift Tests/Backups/main.swift -o /tmp/sif-backups-tests
+          /tmp/sif-backups-tests
           python3 Tests/test-reset.py
           python3 Tests/test-display.py
           node Tests/test-selection.js

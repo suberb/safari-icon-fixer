@@ -25,7 +25,7 @@ macOS · Apple Silicon · Free · No account required
 - **Personalize** with images from the web, custom backgrounds, logo margins, or colors taken from an icon.
 - **Organize** with a visual library, smart filters and batch color presets (Command/Shift selection).
 - **Preview** a simulated Safari start page before applying. Drag supported graphics onto icons.
-- **Undo** staged edits, recover compatible drafts and restore earlier graphics from local backups.
+- **Undo** automatically staged appearance edits, recover compatible drafts, and restore earlier graphics. Browse local backups by date and size.
 - **Protect** applied custom icons in a local collection and prepare restoration if a new scan detects a difference in Safari’s cache.
 - **Stay current** with signed Sparkle updates, checked on launch, with optional automatic installation.
 

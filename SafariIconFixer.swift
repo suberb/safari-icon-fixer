@@ -38,14 +38,23 @@ func rows(_ db: URL, _ query: String) throws -> [[String: Any]] {
     let data = try sql(db, query); if data.isEmpty { return [] }
     guard let result = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { throw fail(l10n("Nierozpoznany wynik SQLite.")) }; return result
 }
-func safePNG(_ data: Data) -> (Data, Int)? {
+private func cachedIconSource(_ data: Data) -> (CGImageSource, Int, Int)? {
     guard data.count <= 8_000_000, let src = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
     var best = 0; var score = 0
     for i in 0..<min(CGImageSourceGetCount(src), 32) {
         guard let props = CGImageSourceCopyPropertiesAtIndex(src, i, nil) as? [String: Any], let w = props[kCGImagePropertyPixelWidth as String] as? Int, let h = props[kCGImagePropertyPixelHeight as String] as? Int, w > 0, h > 0, w <= 8192, h <= 8192 else { continue }
         if min(w,h) > score { score = min(w,h); best = i }
     }
-    guard score > 0, let image = CGImageSourceCreateThumbnailAtIndex(src, best, [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceThumbnailMaxPixelSize: 512, kCGImageSourceCreateThumbnailWithTransform: true] as CFDictionary), let ctx = CGContext(data: nil, width: 256, height: 256, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+    guard score > 0 else { return nil }
+    return (src, best, score)
+}
+func cachedIconSize(_ data: Data) -> Int? {
+    guard let (src, best, score) = cachedIconSource(data),
+          CGImageSourceCreateThumbnailAtIndex(src, best, [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceThumbnailMaxPixelSize: 64, kCGImageSourceShouldCacheImmediately: true] as CFDictionary) != nil else { return nil }
+    return score
+}
+func safePNG(_ data: Data) -> (Data, Int)? {
+    guard let (src, best, score) = cachedIconSource(data), let image = CGImageSourceCreateThumbnailAtIndex(src, best, [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceThumbnailMaxPixelSize: 512, kCGImageSourceCreateThumbnailWithTransform: true] as CFDictionary), let ctx = CGContext(data: nil, width: 256, height: 256, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
     let scale = 256 / CGFloat(max(image.width, image.height)); let w = CGFloat(image.width)*scale, h = CGFloat(image.height)*scale
     ctx.interpolationQuality = .high; ctx.draw(image, in: CGRect(x: (256-w)/2, y: (256-h)/2, width: w, height: h))
     guard let rendered = ctx.makeImage() else { return nil }; let out = NSMutableData()
@@ -181,12 +190,13 @@ struct Cache {
         }
         var sites: [Site] = []
         for (host, links) in named {
+            try Task.checkCancellation()
             let url: URL = icon(host)
-            let values = try? url.resourceValues(forKeys: [.isSymbolicLinkKey])
+            let values = try? url.resourceValues(forKeys: [.isSymbolicLinkKey, .isRegularFileKey, .fileSizeKey])
             var existing: Data? = nil
             var pixelSize: Int? = nil
-            if values?.isSymbolicLink != true {
-                if let data = try? Data(contentsOf: url), let (_, size) = safePNG(data) {
+            if let values, values.isSymbolicLink != true, values.isRegularFile == true, (values.fileSize ?? Int.max) <= 8_000_000 {
+                if let data = try? Data(contentsOf: url), let size = cachedIconSize(data) {
                     existing = data
                     pixelSize = size
                 }
@@ -418,6 +428,12 @@ func fetchIcon(_ host: String) async -> Pending? {
     @State private var showTechnical = false
     @State private var draftLoaded = false
     @State private var draftWritable = false
+    @State private var draftSaveTask: Task<Void, Never>?
+    @State private var studioEditingHost: String?
+    @State private var scanWorker: Task<(sites: [Site], folders: [FavoriteFolder]), Error>?
+    @State private var scanCanCancel = false
+    @State private var prepareTask: Task<Void, Never>?
+    @State private var showBackups = false
     @State private var historySite: Site?
     @State private var historyEntries: [HistoricalIcon] = []
     @AppStorage("sif.workspace.previewDark") private var storedPreviewDark = true
@@ -455,13 +471,13 @@ func fetchIcon(_ host: String) async -> Pending? {
         resetHosts = hosts; resetScope = range; resetTrackedOnly = trackedOnly; confirmReset = true
     }
     func executeReset() {
-        guard requireClosedSafari() else { return }
+        guard !busy, requireClosedSafari() else { return }
         do {
             let saved = try store.reset(resetHosts, scope: resetScope, trackedOnly: resetTrackedOnly)
             for host in resetHosts { pending.removeValue(forKey: host); replacements.remove(host); marked.remove(host) }
             undoPending = nil
             let count = resetHosts.count
-            scan(); message = l10n("Zresetowano {0} ikon. Otwórz Safari; w razie potrzeby odwiedź strony, aby pobrać oryginalne ikony. Kopia: {1}.", String(describing: count), String(describing: saved.lastPathComponent))
+            runScan(presentPermission: true, completionMessage: l10n("Zresetowano {0} ikon. Otwórz Safari; w razie potrzeby odwiedź strony, aby pobrać oryginalne ikony. Kopia: {1}.", String(describing: count), String(describing: saved.lastPathComponent)))
         } catch { handleOperationError(error) }
     }
     private var filterChoices: [String] { [l10n("Wszystkie"), l10n("Brakujące"), l10n("Gotowe"), l10n("Własne")] }
@@ -484,13 +500,22 @@ func fetchIcon(_ host: String) async -> Pending? {
             message = l10n("Nie można odczytać przygotowanych ikon.") + " " + error.localizedDescription
         }
     }
-    private func persistPreparedDraft() {
+    @discardableResult private func persistPreparedDraft() -> Bool {
+        draftSaveTask?.cancel(); draftSaveTask = nil
         DraftProtection.shared.pending = pending.count
+        guard draftLoaded, draftWritable, !busy else { return pending.isEmpty && !busy }
+        do { try store.saveDraft(pending); return true }
+        catch { message = l10n("Nie można zapisać przygotowanych ikon.") + " " + error.localizedDescription; return false }
+    }
+    private func scheduleDraftSave() {
+        DraftProtection.shared.pending = pending.count
+        draftSaveTask?.cancel()
         guard draftLoaded, draftWritable, !busy else { return }
-        // Ensure every queued item has the baseline digest when an existing icon was present.
-        // No Safari data leaves the Mac; the draft is restored only after a fresh scan.
-        do { try store.saveDraft(pending) }
-        catch { message = l10n("Nie można zapisać przygotowanych ikon.") + " " + error.localizedDescription }
+        draftSaveTask = Task { @MainActor in
+            do { try await Task.sleep(nanoseconds: 300_000_000) } catch { return }
+            guard !Task.isCancelled else { return }
+            persistPreparedDraft()
+        }
     }
     private func recoverProtectedIcon(_ item: Site) {
         guard !busy, !permissionDenied, pending[item.host] == nil, recoveryHosts.contains(item.host),
@@ -524,7 +549,7 @@ func fetchIcon(_ host: String) async -> Pending? {
     var shown: [Site] { scoped.filter { s in (filter == l10n("Wszystkie") || (filter == l10n("Brakujące") && (s.needsRepair || recoveryHosts.contains(s.host))) || (filter == l10n("Gotowe") && pending[s.host] != nil) || (filter == l10n("Własne") && customHosts.contains(s.host))) && (search.isEmpty || (s.title + s.host).localizedCaseInsensitiveContains(search)) } }
     var missing: [Site] { scoped.filter { $0.registered && ($0.needsRepair || recoveryHosts.contains($0.host)) && pending[$0.host] == nil } }
     var markedSites: [Site] { scoped.filter { marked.contains($0.host) && $0.registered } }
-    var scopedPending: [String: Pending] { pending.filter { pair in scoped.contains { $0.host == pair.key } } }
+    var scopedPending: [String: Pending] { let hosts = Set(scoped.map(\.host)); return pending.filter { hosts.contains($0.key) } }
     var site: Site? { shown.first { $0.host == selected } }
     var scopeLabel: String { switch scope { case .all: return l10n("Wszystkie Ulubione"); case .root: return l10n("Bez folderu"); case .folder: return folders.first { $0.scope == scope }?.label ?? l10n("Folder") } }
     func openPrivacySettings() {
@@ -545,10 +570,24 @@ func fetchIcon(_ host: String) async -> Pending? {
         else { message = error.localizedDescription }
     }
     func scan() { runScan(presentPermission: true) }
-    func runScan(presentPermission: Bool) {
+    func runScan(presentPermission: Bool, completionMessage: String? = nil) {
         guard !busy else { return }
-        do {
-            let result = try store.scan(); sites = result.sites; folders = result.folders
+        if draftLoaded { persistPreparedDraft() }
+        studioEditingHost = nil; busy = true; DraftProtection.shared.busy = true
+        scanCanCancel = completionMessage == nil
+        message = l10n("Skanowanie Ulubionych…")
+        let reader = store
+        let worker = Task.detached(priority: .userInitiated) { try reader.scan() }
+        scanWorker = worker
+        Task { @MainActor in
+            defer {
+                scanWorker = nil; scanCanCancel = false; busy = false
+                DraftProtection.shared.busy = false; persistPreparedDraft()
+            }
+            do {
+            let result = try await worker.value
+            guard !worker.isCancelled else { throw CancellationError() }
+            sites = result.sites; folders = result.folders
             let protection = try store.captureKnownIcons(sites)
             let tracking = protection.registry
             protectedIcons = protection.icons
@@ -562,6 +601,9 @@ func fetchIcon(_ host: String) async -> Pending? {
             permissionDenied = false; showPermission = false; waitingForPermission = false; permissionHelp = ""
             message = l10n("Odczytano {0} domen w Ulubionych. W wybranym zakresie: {1}.", String(describing: sites.count), String(describing: scoped.count))
             loadPreparedDraft()
+            if let completionMessage { message = completionMessage }
+        } catch is CancellationError {
+            message = l10n("Skanowanie anulowane. Zachowano poprzedni widok.")
         } catch {
             sites = []; folders = []; selected = nil; customHosts = []; protectedIcons = [:]; recoveryHosts = []
             if isSafariPermissionError(error) {
@@ -571,6 +613,7 @@ func fetchIcon(_ host: String) async -> Pending? {
                 marked = []; scope = .root
                 message = l10n("Nie można odczytać Safari: {0}", String(describing: error.localizedDescription))
             }
+        }
         }
     }
     func prepareDisplay(_ targets: [Site], style: SafariIconDisplay) {
@@ -595,11 +638,13 @@ func fetchIcon(_ host: String) async -> Pending? {
     func prepareSites(_ targets: [Site]) {
         guard !busy, !permissionDenied, !targets.isEmpty else { return }
         rememberDraft()
-        busy = true
-        Task {
+        busy = true; DraftProtection.shared.busy = true
+        prepareTask = Task {
+            defer { prepareTask = nil; busy = false; DraftProtection.shared.busy = false; persistPreparedDraft() }
             var failures = 0
             let supportsDisplay = (try? store.hasDisplayColumn()) == true
             for (i, site) in targets.enumerated() {
+                if Task.isCancelled { break }
                 message = l10n("Przygotowanie {0}/{1}: {2}", String(describing: i+1), String(describing: targets.count), String(describing: site.host))
                 guard site.registered else { failures += 1; continue }
                 if pending[site.host] != nil { continue }
@@ -615,11 +660,12 @@ func fetchIcon(_ host: String) async -> Pending? {
                     pending[site.host] = Pending(png: data, source: l10n("Zachowano obecną grafikę i styl Safari"), custom: customHosts.contains(site.host), expectedDigest: iconDigest(existing))
                     replacements.insert(site.host)
                 } else if let p = await fetchIcon(site.host) {
+                    if Task.isCancelled { break }
                     pending[site.host] = p
                     if site.existing != nil { replacements.insert(site.host) }
                 } else { failures += 1 }
             }
-            busy = false
+            if Task.isCancelled { message = l10n("Przerwano pobieranie. Zachowano przygotowane ikony."); return }
             message = l10n("Przygotowano {0} ikon w zakresie. Nie zmieniono Safari. Niepowodzenia: {1}.", String(describing: scopedPending.count), String(describing: failures))
         }
     }
@@ -634,18 +680,23 @@ func fetchIcon(_ host: String) async -> Pending? {
         marked = Set(shown.map(\.host)); selected = shown.first?.host; anchor = selected
     }
     private func clearSelection() { marked = []; selected = nil; anchor = nil }
-    private func rememberDraft() { undoPending = pending; undoReplacements = replacements }
+    private func rememberDraft() { studioEditingHost = nil; undoPending = pending; undoReplacements = replacements }
     private func undoDraft() {
         guard !busy, let previous = undoPending else { return }
-        pending = previous; replacements = undoReplacements; undoPending = nil
+        studioEditingHost = nil; pending = previous; replacements = undoReplacements; undoPending = nil
     }
-    private func stage(_ item: Site, result: Pending) {
-        guard !busy, !permissionDenied, let current = scoped.first(where: { $0.host == item.host && $0.registered }), current.existing.map(iconDigest) == item.existing.map(iconDigest) else { return }
+    @discardableResult private func stage(_ item: Site, result: Pending, live: Bool = false) -> Bool {
+        guard !busy, !permissionDenied, let current = scoped.first(where: { $0.host == item.host && $0.registered }), current.existing.map(iconDigest) == item.existing.map(iconDigest) else { return false }
         let prior = pending[item.host]
-        rememberDraft()
-        pending[item.host] = Pending(png: result.png, source: result.source, custom: result.custom, display: result.display, expectedDigest: prior?.expectedDigest ?? item.existing.map(iconDigest))
+        let next = Pending(png: result.png, source: result.source, custom: result.custom, display: result.display, expectedDigest: prior?.expectedDigest ?? item.existing.map(iconDigest))
+        if prior == next { return true }
+        if !live || studioEditingHost != item.host { rememberDraft() }
+        studioEditingHost = live ? item.host : nil
+        pending[item.host] = next
         if item.existing != nil { replacements.insert(item.host) }
+        scheduleDraftSave()
         message = l10n("Przygotowano ikonę: {0}. Kliknij Zastosuj, aby zapisać.", item.host)
+        return true
     }
     private func preparePreset(_ preset: StudioPreset, targets: [Site]) {
         guard !busy, !permissionDenied else { return }
@@ -722,6 +773,7 @@ func fetchIcon(_ host: String) async -> Pending? {
         } catch { message = error.localizedDescription }
     }
     func write() {
+        guard !busy else { return }
         guard !permissionDenied else { showPermission = true; return }
         guard requireClosedSafari() else { return }
         let batch = scopedPending
@@ -729,10 +781,10 @@ func fetchIcon(_ host: String) async -> Pending? {
             let (backup,count) = try store.apply(batch,allowingReplacement:replacements,scope:scope)
             for host in batch.keys { pending.removeValue(forKey:host); replacements.remove(host); marked.remove(host) }
             undoPending = nil
-            scan(); message = l10n("Zapisano {0} ikon. Kopia: {1}. Otwórz Safari i sprawdź efekt.", String(describing: count), String(describing: backup.lastPathComponent))
+            runScan(presentPermission: true, completionMessage: l10n("Zapisano {0} ikon. Kopia: {1}. Otwórz Safari i sprawdź efekt.", String(describing: count), String(describing: backup.lastPathComponent)))
         } catch { handleOperationError(error) }
     }
-    func selectBackup() { guard requireClosedSafari() else { return }; let p = NSOpenPanel(); p.directoryURL = store.backups; p.canChooseDirectories = true; p.canChooseFiles = false; guard p.runModal() == .OK, let u = p.url else {return}; chosenBackup = u; confirmRestore = true }
+    func selectBackup() { guard !busy else { return }; chosenBackup = nil; showBackups = true }
     func tile(_ data: Data?, fallback: String, size: CGFloat) -> some View { Group { if let data, let image = NSImage(data:data) { Image(nsImage:image).resizable().scaledToFit() } else { ZStack { RoundedRectangle(cornerRadius:size*0.22).fill(.gray.opacity(0.2)); Text(fallback.prefix(1).uppercased()).font(.system(size:size*0.45,weight:.medium)).foregroundStyle(.secondary) } } }.frame(width:size,height:size) }
     private var purple: Color { Color(red: 137.0/255, green: 96.0/255, blue: 232.0/255) }
     private var surface: Color { Color(nsColor: .controlBackgroundColor) }
@@ -984,8 +1036,8 @@ func fetchIcon(_ host: String) async -> Pending? {
                 let currentStyle = pending[item.host]?.display ?? item.displayCode.flatMap(SafariIconDisplay.init(rawValue:))
                 InlineIconStudio(data: data, initialDisplay: currentStyle, staged: pending[item.host] != nil,
                                  changeImage: { iconEditor = item }) { png, display in
-                    stage(item, result: Pending(png: png, source: "Color Studio", custom: true, display: display))
-                }.id(item.host + iconDigest(data) + String(currentStyle?.rawValue ?? -1) + String(pending[item.host] != nil))
+                    stage(item, result: Pending(png: png, source: "Color Studio", custom: true, display: display), live: true)
+                }.id(item.host)
                     .disabled(!item.registered || busy || permissionDenied)
             } else {
                 VStack(spacing: 12) {
@@ -1049,6 +1101,9 @@ func fetchIcon(_ host: String) async -> Pending? {
                 if busy { ProgressView().controlSize(.small) } else { Image(systemName: "info.circle").foregroundStyle(.secondary) }
                 Text(message).font(.caption).foregroundStyle(.secondary).lineLimit(2).help(message).textSelection(.enabled)
                 Spacer(minLength: 0)
+                if (scanWorker != nil && scanCanCancel) || prepareTask != nil {
+                    Button(l10n("Anuluj")) { scanWorker?.cancel(); prepareTask?.cancel() }.controlSize(.small)
+                }
             }
             safariStatus
             if !pending.isEmpty || undoPending != nil {
@@ -1109,7 +1164,11 @@ func fetchIcon(_ host: String) async -> Pending? {
         }
         .frame(minWidth: 850, minHeight: 500)
         .tint(purple)
-        .onAppear { refreshSafariStatus(); filter = filterChoices.indices.contains(storedFilter) ? filterChoices[storedFilter] : filterChoices[0]; scan() }
+        .onAppear {
+            DraftProtection.shared.flushDraft = { persistPreparedDraft() }
+            refreshSafariStatus(); filter = filterChoices.indices.contains(storedFilter) ? filterChoices[storedFilter] : filterChoices[0]; scan()
+        }
+        .onDisappear { if !busy { persistPreparedDraft() } }
         .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didLaunchApplicationNotification)) { _ in refreshSafariStatus() }
         .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didTerminateApplicationNotification)) { _ in refreshSafariStatus() }
         .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in refreshSafariStatus() }
@@ -1133,11 +1192,20 @@ func fetchIcon(_ host: String) async -> Pending? {
         .onChange(of: scope) { _ in clearSelection() }
         .onChange(of: filter) { value in clearSelection(); storedFilter = filterChoices.firstIndex(of: value) ?? 0 }
         .onChange(of: search) { _ in clearSelection() }
-        .onChange(of: pending) { _ in persistPreparedDraft() }
+        .onChange(of: selected) { _ in studioEditingHost = nil }
+        .onChange(of: pending) { _ in scheduleDraftSave() }
         .onChange(of: busy) { value in DraftProtection.shared.busy = value; if !value { persistPreparedDraft() } }
         .onReceive(NotificationCenter.default.publisher(for: .sifUndoDraft)) { _ in undoDraft() }
         .onReceive(NotificationCenter.default.publisher(for: .sifSelectAll)) { _ in if !busy && !permissionDenied { selectAllVisible() } }
         .onReceive(NotificationCenter.default.publisher(for: .sifQuickLook)) { _ in if !busy, let item = site { quickLook = item } }
+        .sheet(isPresented: $showBackups, onDismiss: {
+            if chosenBackup != nil, requireClosedSafari() { confirmRestore = true }
+            else { chosenBackup = nil }
+        }) {
+            BackupManagerView(root: store.backups, safariOpen: safariOpen) { url in
+                chosenBackup = url; showBackups = false
+            }
+        }
         .sheet(item: $historySite) { item in
             VStack(alignment: .leading, spacing: 14) {
                 Text(l10n("Historia ikony")).font(.title2.bold())
@@ -1188,7 +1256,7 @@ func fetchIcon(_ host: String) async -> Pending? {
         } message: {
             Text(l10n("Usunie obecną grafikę i własne tło. Safari spróbuje pobrać domyślną ikonę; do tego czasu może wyświetlać literę. Dotyczy też wspólnych ikon w innych folderach. Zamknij Safari (⌘Q). Powstanie kopia. Zakładki pozostaną bez zmian."))
         }
-        .alert(l10n("Przywrócić cały cache ikon?"),isPresented:$confirmRestore) { Button(l10n("Anuluj"),role:.cancel){}; Button(l10n("Przywróć"),role:.destructive) { guard requireClosedSafari() else { return }; if let saved = chosenBackup { do { let displaced = try store.restore(saved); pending = [:]; replacements = []; marked = []; undoPending = nil; scan(); message = l10n("Przywrócono kopię. Poprzedni cache: {0}.", String(describing: displaced.lastPathComponent)) } catch {handleOperationError(error)} } } } message: { Text(l10n("Wymaga zamknięcia Safari. Bieżący folder również zostanie zachowany jako kopia.")) }
+        .alert(l10n("Przywrócić cały cache ikon?"),isPresented:$confirmRestore) { Button(l10n("Anuluj"),role:.cancel){}; Button(l10n("Przywróć"),role:.destructive) { guard !busy, requireClosedSafari() else { return }; if let saved = chosenBackup { chosenBackup = nil; do { let displaced = try store.restore(saved); pending = [:]; replacements = []; marked = []; undoPending = nil; runScan(presentPermission: true, completionMessage: l10n("Przywrócono kopię. Poprzedni cache: {0}.", String(describing: displaced.lastPathComponent))) } catch {handleOperationError(error)} } } } message: { Text(l10n("Wymaga zamknięcia Safari. Bieżący folder również zostanie zachowany jako kopia.") + (pending.isEmpty ? "" : "\n\n" + l10n("Przywrócenie całej kopii odrzuci przygotowane zmiany ({0}).", String(pending.count)))) }
     }
 }
 private enum StudioPreset: CaseIterable {
@@ -1202,7 +1270,10 @@ private enum StudioPreset: CaseIterable {
     let initialDisplay: SafariIconDisplay?
     let staged: Bool
     let changeImage: () -> Void
-    let onStage: (Data, SafariIconDisplay) -> Void
+    let onStage: (Data, SafariIconDisplay) -> Bool
+    private struct Input: Equatable { let data: Data; let style: SafariIconDisplay?; let staged: Bool }
+    private var input: Input { Input(data: data, style: initialDisplay, staged: staged) }
+    @State private var lastEmission: Input?
     @State private var art: IconArtwork?
     @State private var background: IconBackground = .original
     @State private var color: Color = .white
@@ -1219,6 +1290,21 @@ private enum StudioPreset: CaseIterable {
             renderFailed = true; return
         }
         renderFailed = false; rendered = result; edited = true
+        stagePreview()
+    }
+    private func stagePreview() {
+        let png = rendered ?? data
+        let chosen = display
+        if onStage(png, chosen) {
+            lastEmission = Input(data: png, style: chosen, staged: true)
+        } else { renderFailed = true }
+    }
+    private func resetInput() {
+        art = IconArtwork(data); rendered = nil; edited = false; renderFailed = false
+        background = .original; color = .white; lightening = 0.40; inset = 0.12
+        if let art, art.separate { inset = max(0, min(0.30, (1 - Double(max(art.bounds.width, art.bounds.height)) / 256) / 2)) }
+        style = initialDisplay.map { $0 == .fullTile ? 1 : 2 } ?? 0
+        lastEmission = nil
     }
     private var display: SafariIconDisplay {
         if style == 1 { return .fullTile }; if style == 2 { return .systemTile }
@@ -1274,7 +1360,7 @@ private enum StudioPreset: CaseIterable {
                 Text(l10n("Złożone tło. Zachowuję cały obraz, aby nie tworzyć ostrych krawędzi.")).font(.caption).foregroundStyle(.secondary)
             }
             DisclosureGroup(l10n("Styl w Safari"), isExpanded: $advanced) {
-                Picker(l10n("Styl w Safari"), selection: Binding(get: { style }, set: { style = $0; edited = true })) {
+                Picker(l10n("Styl w Safari"), selection: Binding(get: { style }, set: { style = $0; edited = true; renderFailed = false; stagePreview() })) {
                     Text(l10n("Automatycznie")).tag(0); Text(l10n("Pełny kafelek")).tag(1); Text(l10n("Tło systemowe")).tag(2)
                 }.labelsHidden().padding(.top, 5)
                 Text(l10n("Pełny kafelek usuwa systemowy margines; automatycznie wybierany dla pełnego tła.")).font(.caption).foregroundStyle(.secondary)
@@ -1288,23 +1374,15 @@ private enum StudioPreset: CaseIterable {
             if renderFailed {
                 Text(l10n("Nie udało się przygotować podglądu.")).font(.caption).foregroundStyle(.secondary)
             }
-            if edited {
-                Button { onStage(rendered ?? data, display) } label: {
-                    Label(l10n("Przygotuj zmianę"), systemImage: "checkmark").frame(maxWidth: .infinity)
-                }.buttonStyle(.borderedProminent).controlSize(.large).disabled(renderFailed)
-            } else if staged {
+            if staged {
                 Label(l10n("Gotowa do zapisania"), systemImage: "checkmark.circle.fill")
                     .font(.caption).foregroundStyle(.secondary)
             }
-            if edited || staged {
-                Text(l10n("Zastosuj zapisze zmiany w Safari.")).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            }
-        }.onAppear {
-            art = IconArtwork(data)
-            if let art, art.separate {
-                inset = max(0, min(0.30, (1 - Double(max(art.bounds.width, art.bounds.height)) / 256) / 2))
-            }
-            if let initialDisplay { style = initialDisplay == .fullTile ? 1 : 2 }
+            Text(l10n("Edycja trafia do szkicu. Zastosuj zapisze zmiany w Safari.")).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        }.onAppear { resetInput() }
+        .onChange(of: input) { value in
+            // Acknowledge our own edit without flattening artwork or resetting slider values.
+            if value == lastEmission { lastEmission = nil } else { resetInput() }
         }
     }
 }
@@ -1312,12 +1390,15 @@ private enum StudioPreset: CaseIterable {
     static let shared = DraftProtection()
     var pending = 0
     var busy = false
+    var flushDraft: (() -> Bool)?
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         let state = DraftProtection.shared
         if state.busy { return .terminateCancel }
+        let saved = state.flushDraft?() ?? (state.pending == 0)
         guard state.pending > 0 else { return .terminateNow }
+        if saved { return .terminateNow }
         let alert = NSAlert(); alert.messageText = l10n("Zakończyć z przygotowanymi ikonami?")
-        alert.informativeText = l10n("Masz przygotowane ikony. Nie zapisano ich w Safari. Aplikacja próbuje zachować je lokalnie do następnego uruchomienia.")
+        alert.informativeText = l10n("Nie udało się zachować szkicu na dysku. Zakończenie może spowodować utratę przygotowanych zmian.")
         alert.addButton(withTitle: l10n("Anuluj")); alert.addButton(withTitle: l10n("Zakończ"))
         return alert.runModal() == .alertSecondButtonReturn ? .terminateNow : .terminateCancel
     }

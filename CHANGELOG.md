@@ -1,5 +1,10 @@
 # Historia wersji
 
+## 0.6.4 — Performance & Reliability
+- Live appearance edits stage automatically; a single undo point per editing session and debounced local draft writes, flushed at normal quit.
+- Background Favorites scanning with cancellation and thumbnail-only cache validation; cancel bulk icon downloads without discarding completed work.
+- Backup manager with dates, logical sizes, restore and confirmed Trash action; newest valid backup is protected.
+
 ## 0.6.3 — Icon Protection
 - Locally protect applied custom icon artwork and display style independently of Safari; detect changes on scans and stage restoration for review.
 - Complete cache backups now include matching personalization metadata; older backups retain the existing protected collection.
