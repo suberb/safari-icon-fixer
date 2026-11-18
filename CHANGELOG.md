@@ -1,5 +1,10 @@
 # Historia wersji
 
+## 0.6.3 — Icon Protection
+- Locally protect applied custom icon artwork and display style independently of Safari; detect changes on scans and stage restoration for review.
+- Complete cache backups now include matching personalization metadata; older backups retain the existing protected collection.
+- Legacy digest registry migration only imports matching artwork. No automatic Safari writes.
+
 ## 0.6.2 — Clean inspector
 - One live icon preview, compact appearance controls, advanced Safari style disclosure, contextual actions and a clear staged-change indicator.
 - Infer the initial logo margin and display style from the current icon; no automatic cache writes.

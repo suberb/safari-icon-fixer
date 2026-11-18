@@ -66,6 +66,8 @@ struct Cache {
     var images: URL { cache.appendingPathComponent("Images", isDirectory: true) }
     var backups: URL { Cache.fm.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/Safari Icon Fixer/Backups", isDirectory: true) }
     var registryURL: URL { backups.deletingLastPathComponent().appendingPathComponent("CustomIcons.json") }
+    var personalizationURL: URL { backups.deletingLastPathComponent().appendingPathComponent("Personalization.json") }
+    private let snapshotMetadata = "SIF-Personalization.json"
     var draftURL: URL { backups.deletingLastPathComponent().appendingPathComponent("PreparedIcons.json") }
     func readDraft() throws -> [String: Pending] {
         guard Cache.fm.fileExists(atPath: draftURL.path) else { return [:] }
@@ -111,13 +113,28 @@ struct Cache {
         }
         return result
     }
-    func registry() throws -> [String: String] {
-        guard Cache.fm.fileExists(atPath: registryURL.path) else { return [:] }
-        return try JSONDecoder().decode([String: String].self, from: Data(contentsOf: registryURL))
+    func personalization() throws -> PersonalizationState {
+        // Legacy digest-only registry is never overwritten by migration.
+        if Cache.fm.fileExists(atPath: personalizationURL.path) { return try PersonalizationFile.read(personalizationURL) }
+        guard Cache.fm.fileExists(atPath: registryURL.path) else { return PersonalizationState() }
+        let info = try registryURL.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey])
+        guard info.isRegularFile == true, info.isSymbolicLink != true, (info.fileSize ?? Int.max) <= PersonalizationFile.limit else { throw CocoaError(.fileReadCorruptFile) }
+        return PersonalizationState(registry: try JSONDecoder().decode([String: String].self, from: Data(contentsOf: registryURL)))
     }
-    func saveRegistry(_ value: [String: String]) throws {
-        try Cache.fm.createDirectory(at: registryURL.deletingLastPathComponent(), withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        try JSONEncoder().encode(value).write(to: registryURL, options: .atomic)
+    func savePersonalization(_ value: PersonalizationState) throws {
+        try PersonalizationFile.write(value, to: personalizationURL)
+    }
+    func captureKnownIcons(_ sites: [Site]) throws -> PersonalizationState {
+        let old = try personalization()
+        var current = old
+        for site in sites where site.registered {
+            // Import only a verified, previously customized image, never guess from an overwritten icon.
+            guard current.icons[site.host] == nil, let data = site.existing,
+                  let digest = current.registry[site.host], iconDigest(data) == digest else { continue }
+            current.remember(host: site.host, png: data, digest: digest, display: site.displayCode.flatMap(SafariIconDisplay.init(rawValue:)))
+        }
+        if current != old { try savePersonalization(current) }
+        return current
     }
     var safariRunning: Bool { NSWorkspace.shared.runningApplications.contains { $0.bundleIdentifier == "com.apple.Safari" || $0.bundleIdentifier == "com.apple.SafariTechnologyPreview" } }
     func icon(_ host: String) -> URL { images.appendingPathComponent(hash(host) + ".png") }
@@ -189,11 +206,17 @@ struct Cache {
         }
         return (sites, index.folders)
     }
-    func backup() throws -> URL {
+    func backup(_ personalization: PersonalizationState) throws -> URL {
         guard !safariRunning else { throw fail(l10n("Zamknij Safari (⌘Q), a następnie ponów.")) }
         try Cache.fm.createDirectory(at: backups, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         let dest = backups.appendingPathComponent(UUID().uuidString, isDirectory: true)
-        try Cache.fm.copyItem(at: cache, to: dest)
+        do {
+            try Cache.fm.copyItem(at: cache, to: dest)
+            try PersonalizationFile.write(personalization, to: dest.appendingPathComponent(snapshotMetadata))
+        } catch {
+            // An incomplete snapshot is never offered as a valid backup.
+            try? Cache.fm.removeItem(at: dest); throw error
+        }
         let now = Date(); try? Cache.fm.setAttributes([.creationDate: now, .modificationDate: now], ofItemAtPath: dest.path)
         return dest
     }
@@ -210,15 +233,18 @@ struct Cache {
         if !supportsDisplay && pending.values.contains(where: { $0.display != nil }) {
             throw fail(l10n("Ta wersja cache Safari nie udostępnia parametru stylu ikon. Nie zapisano zmian."))
         }
-        let oldRegistry = try registry()
-        var newRegistry = oldRegistry
+        let oldState = try personalization()
+        var nextState = oldState
         for (host, item) in pending {
-            let currentDigest: String? = byHost[host]?.existing.map(iconDigest)
-            let knownDigest: String? = oldRegistry[host]
-            if item.custom || (currentDigest != nil && currentDigest == knownDigest) { newRegistry[host] = iconDigest(item.png) }
-            else { newRegistry.removeValue(forKey: host) }
+            let currentDigest = byHost[host]?.existing.map(iconDigest)
+            let knownDigest = oldState.registry[host]
+            if item.custom || (currentDigest != nil && currentDigest == knownDigest) {
+                let style = item.display ?? byHost[host]?.displayCode.flatMap(SafariIconDisplay.init(rawValue:))
+                nextState.remember(host: host, png: item.png, digest: iconDigest(item.png), display: style)
+            }
+            // A generic repair must not erase the protected version of an overwritten icon.
         }
-        let saved = try backup(); var changed: [String] = []; var registryChanged = false
+        let saved = try backup(oldState); var changed: [String] = []; var registryChanged = false
         do {
             guard !safariRunning else { throw fail(l10n("Safari zostało otwarte podczas przygotowania.")) }
             for (host, item) in pending {
@@ -226,7 +252,7 @@ struct Cache {
                 if byHost[host]?.existing != item.png { changed.append(host); try item.png.write(to: icon(host), options: .atomic) }
             }
             guard !safariRunning else { throw fail(l10n("Safari zostało otwarte podczas zapisu.")) }
-            if oldRegistry != newRegistry { try saveRegistry(newRegistry); registryChanged = true }
+            if oldState != nextState { try savePersonalization(nextState); registryChanged = true }
             guard !safariRunning else { throw fail(l10n("Safari zostało otwarte podczas zapisu.")) }
             let statements = pending.keys.sorted().map { host -> String in
                 let assignment = iconDisplayAssignment(pending[host]?.display)
@@ -236,7 +262,7 @@ struct Cache {
             return (saved, pending.count)
         } catch {
             var problems: [String] = []
-            if registryChanged { do { try saveRegistry(oldRegistry) } catch { problems.append(l10n("rejestr własnych ikon")) } }
+            if registryChanged { do { try savePersonalization(oldState) } catch { problems.append(l10n("rejestr własnych ikon")) } }
             for host in changed {
                 let before = saved.appendingPathComponent("Images").appendingPathComponent(hash(host)+".png")
                 do { if Cache.fm.fileExists(atPath: before.path) { try Data(contentsOf: before).write(to: icon(host), options: .atomic) } else if Cache.fm.fileExists(atPath: icon(host).path) { try Cache.fm.removeItem(at: icon(host)) } } catch { problems.append(host) }
@@ -249,22 +275,22 @@ struct Cache {
         let flag = try schema()
         let sites = try scan().sites
         let byHost = Dictionary(uniqueKeysWithValues: sites.map { ($0.host, $0) })
-        let oldRegistry = try registry()
-        var nextRegistry = oldRegistry
+        let oldState = try personalization()
+        var nextState = oldState
         // Never touch domains outside the requested scope or unknown/ambiguous rows.
         for host in hosts {
             guard let site = byHost[host], site.registered, site.locations.contains(where: { scope.includes($0.folder) }) else { throw fail(l10n("Stan {0} zmienił się. Przeskanuj ponownie.", String(describing: host))) }
             if trackedOnly {
-                guard let data = site.existing, oldRegistry[host] == iconDigest(data) else { throw fail(l10n("Ikona {0} została zmieniona poza aplikacją. Przeskanuj ponownie.", String(describing: host))) }
+                guard let data = site.existing, oldState.registry[host] == iconDigest(data) else { throw fail(l10n("Ikona {0} została zmieniona poza aplikacją. Przeskanuj ponownie.", String(describing: host))) }
             }
             let path = icon(host)
             if let values = try? path.resourceValues(forKeys: [.isSymbolicLinkKey, .isRegularFileKey]) {
                 guard values.isSymbolicLink != true, values.isRegularFile == true else { throw fail(l10n("Nieprawidłowa ścieżka ikony: {0}.", String(describing: host))) }
             } else if Cache.fm.fileExists(atPath: path.path) { throw fail(l10n("Nie można zweryfikować pliku: {0}.", String(describing: host))) }
-            nextRegistry.removeValue(forKey: host)
+            nextState.forget(host)
         }
         guard sites.contains(where: { $0.registered && $0.existing != nil && $0.active }) else { throw fail(l10n("Nie potwierdzono mapowania cache dla tej wersji Safari.")) }
-        let saved = try backup()
+        let saved = try backup(oldState)
         var removed: [String] = []; var registryChanged = false
         do {
             for host in hosts.sorted() {
@@ -272,14 +298,14 @@ struct Cache {
                 let path = icon(host)
                 if Cache.fm.fileExists(atPath: path.path) { try Cache.fm.removeItem(at: path); removed.append(host) }
             }
-            if nextRegistry != oldRegistry { try saveRegistry(nextRegistry); registryChanged = true }
+            if nextState != oldState { try savePersonalization(nextState); registryChanged = true }
             guard !safariRunning else { throw fail(l10n("Safari zostało otwarte podczas resetu.")) }
             let statements = hosts.sorted().map { "UPDATE cache_settings SET \(flag)=0, download_status_flags=0 WHERE host=\(quote($0));" }.joined(separator: "\n")
             _ = try sql(db, "BEGIN IMMEDIATE;\n" + statements + "\nCOMMIT;", write: true)
             return saved
         } catch {
             var problems: [String] = []
-            if registryChanged { do { try saveRegistry(oldRegistry) } catch { problems.append(l10n("rejestr własnych ikon")) } }
+            if registryChanged { do { try savePersonalization(oldState) } catch { problems.append(l10n("rejestr własnych ikon")) } }
             for host in removed {
                 let file = saved.appendingPathComponent("Images").appendingPathComponent(hash(host)+".png")
                 do { try Data(contentsOf: file).write(to: icon(host), options: .atomic) } catch { problems.append(host) }
@@ -292,13 +318,37 @@ struct Cache {
         guard !safariRunning else { throw fail(l10n("Zamknij Safari (⌘Q).")) }
         guard saved.deletingLastPathComponent().standardizedFileURL == backups.standardizedFileURL, UUID(uuidString: saved.lastPathComponent) != nil, Cache.fm.fileExists(atPath: saved.appendingPathComponent("TouchIconCacheSettings.db").path) else { throw fail(l10n("Wybierz prawidłową kopię aplikacji.")) }
         guard !safariRunning else { throw fail(l10n("Zamknij Safari.")) }
-        let staged = safari.appendingPathComponent("SIF-stage-\(UUID().uuidString)"); let displaced = backups.appendingPathComponent(UUID().uuidString)
-        try Cache.fm.copyItem(at: saved, to: staged)
+        let oldState = try personalization()
+        let info = try saved.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+        guard info.isDirectory == true, info.isSymbolicLink != true else { throw fail(l10n("Wybierz prawidłową kopię aplikacji.")) }
+        let backupDB = try saved.appendingPathComponent("TouchIconCacheSettings.db").resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
+        let backupImages = try saved.appendingPathComponent("Images").resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+        guard backupDB.isRegularFile == true, backupDB.isSymbolicLink != true, backupImages.isDirectory == true, backupImages.isSymbolicLink != true else { throw fail(l10n("Wybierz prawidłową kopię aplikacji.")) }
+        let metadata = saved.appendingPathComponent(snapshotMetadata)
+        // Old backups have no metadata. Keep the protected collection instead of inventing a historical registry.
+        let hasMetadata = Cache.fm.fileExists(atPath: metadata.path)
+        let restoredState = hasMetadata ? try PersonalizationFile.read(metadata) : oldState
+        let staged = safari.appendingPathComponent("SIF-stage-\(UUID().uuidString)")
+        let displaced = backups.appendingPathComponent(UUID().uuidString)
         defer { try? Cache.fm.removeItem(at: staged) }
+        try Cache.fm.copyItem(at: saved, to: staged)
+        if hasMetadata { try Cache.fm.removeItem(at: staged.appendingPathComponent(snapshotMetadata)) }
         guard !safariRunning else { throw fail(l10n("Safari zostało otwarte.")) }
         try Cache.fm.moveItem(at: cache, to: displaced)
-        do { try Cache.fm.moveItem(at: staged, to: cache) } catch {
-            do { try Cache.fm.moveItem(at: displaced, to: cache) } catch { throw fail(l10n("Nie udało się odtworzyć bieżącej pamięci. Zachowano ją w {0}.", String(describing: displaced.path))) }; throw error
+        var installed = false
+        do {
+            try PersonalizationFile.write(oldState, to: displaced.appendingPathComponent(snapshotMetadata))
+            guard !safariRunning else { throw fail(l10n("Safari zostało otwarte.")) }
+            try Cache.fm.moveItem(at: staged, to: cache); installed = true
+            if restoredState != oldState { try savePersonalization(restoredState) }
+        } catch {
+            do {
+                if installed { try Cache.fm.moveItem(at: cache, to: staged) }
+                let sidecar = displaced.appendingPathComponent(snapshotMetadata)
+                if Cache.fm.fileExists(atPath: sidecar.path) { try Cache.fm.removeItem(at: sidecar) }
+                try Cache.fm.moveItem(at: displaced, to: cache)
+            } catch { throw fail(l10n("Nie udało się odtworzyć bieżącej pamięci. Zachowano ją w {0}.", String(describing: displaced.path))) }
+            throw error
         }
         return displaced
     }
@@ -382,6 +432,8 @@ func fetchIcon(_ host: String) async -> Pending? {
     @State private var permissionHelp = ""
     @State private var iconEditor: Site?
     @State private var customHosts = Set<String>()
+    @State private var protectedIcons: [String: ProtectedIcon] = [:]
+    @State private var recoveryHosts = Set<String>()
     @State private var resetHosts = Set<String>()
     @State private var resetScope: FavoriteScope = .root
     @State private var resetTrackedOnly = false
@@ -440,6 +492,15 @@ func fetchIcon(_ host: String) async -> Pending? {
         do { try store.saveDraft(pending) }
         catch { message = l10n("Nie można zapisać przygotowanych ikon.") + " " + error.localizedDescription }
     }
+    private func recoverProtectedIcon(_ item: Site) {
+        guard !busy, !permissionDenied, pending[item.host] == nil, recoveryHosts.contains(item.host),
+              let saved = protectedIcons[item.host], let (normalized, _) = safePNG(saved.png) else { return }
+        do {
+            let display = try store.hasDisplayColumn() ? saved.display : nil
+            let png = saved.png.starts(with: [137,80,78,71,13,10,26,10]) ? saved.png : normalized
+            stage(item, result: Pending(png: png, source: l10n("Odzyskaj własną ikonę"), custom: true, display: display))
+        } catch { handleOperationError(error) }
+    }
     private func openHistory(_ item: Site) {
         guard !busy, !permissionDenied else { return }
         do { historyEntries = try store.history(for: item.host); historySite = item }
@@ -460,8 +521,8 @@ func fetchIcon(_ host: String) async -> Pending? {
         }
         return result
     }
-    var shown: [Site] { scoped.filter { s in (filter == l10n("Wszystkie") || (filter == l10n("Brakujące") && s.needsRepair) || (filter == l10n("Gotowe") && pending[s.host] != nil) || (filter == l10n("Własne") && customHosts.contains(s.host))) && (search.isEmpty || (s.title + s.host).localizedCaseInsensitiveContains(search)) } }
-    var missing: [Site] { scoped.filter { $0.registered && $0.needsRepair && pending[$0.host] == nil } }
+    var shown: [Site] { scoped.filter { s in (filter == l10n("Wszystkie") || (filter == l10n("Brakujące") && (s.needsRepair || recoveryHosts.contains(s.host))) || (filter == l10n("Gotowe") && pending[s.host] != nil) || (filter == l10n("Własne") && customHosts.contains(s.host))) && (search.isEmpty || (s.title + s.host).localizedCaseInsensitiveContains(search)) } }
+    var missing: [Site] { scoped.filter { $0.registered && ($0.needsRepair || recoveryHosts.contains($0.host)) && pending[$0.host] == nil } }
     var markedSites: [Site] { scoped.filter { marked.contains($0.host) && $0.registered } }
     var scopedPending: [String: Pending] { pending.filter { pair in scoped.contains { $0.host == pair.key } } }
     var site: Site? { shown.first { $0.host == selected } }
@@ -488,7 +549,10 @@ func fetchIcon(_ host: String) async -> Pending? {
         guard !busy else { return }
         do {
             let result = try store.scan(); sites = result.sites; folders = result.folders
-            let tracking = (try? store.registry()) ?? [:]
+            let protection = try store.captureKnownIcons(sites)
+            let tracking = protection.registry
+            protectedIcons = protection.icons
+            recoveryHosts = Set(sites.filter { $0.registered && protection.needsRecovery(host: $0.host, current: $0.existing, displayCode: $0.displayCode) }.map(\.host))
             customHosts = Set(sites.compactMap { site -> String? in
                 guard site.registered, let data = site.existing, tracking[site.host] == iconDigest(data) else { return nil }
                 return site.host
@@ -499,7 +563,7 @@ func fetchIcon(_ host: String) async -> Pending? {
             message = l10n("Odczytano {0} domen w Ulubionych. W wybranym zakresie: {1}.", String(describing: sites.count), String(describing: scoped.count))
             loadPreparedDraft()
         } catch {
-            sites = []; folders = []; selected = nil; customHosts = []
+            sites = []; folders = []; selected = nil; customHosts = []; protectedIcons = [:]; recoveryHosts = []
             if isSafariPermissionError(error) {
                 reportPermission(error, present: presentPermission)
             } else {
@@ -534,10 +598,17 @@ func fetchIcon(_ host: String) async -> Pending? {
         busy = true
         Task {
             var failures = 0
+            let supportsDisplay = (try? store.hasDisplayColumn()) == true
             for (i, site) in targets.enumerated() {
                 message = l10n("Przygotowanie {0}/{1}: {2}", String(describing: i+1), String(describing: targets.count), String(describing: site.host))
                 guard site.registered else { failures += 1; continue }
                 if pending[site.host] != nil { continue }
+                if recoveryHosts.contains(site.host), let saved = protectedIcons[site.host], let (normalized, _) = safePNG(saved.png) {
+                    let png = saved.png.starts(with: [137,80,78,71,13,10,26,10]) ? saved.png : normalized
+                    pending[site.host] = Pending(png: png, source: l10n("Odzyskaj własną ikonę"), custom: true, display: supportsDisplay ? saved.display : nil, expectedDigest: site.existing.map(iconDigest))
+                    if site.existing != nil { replacements.insert(site.host) }
+                    continue
+                }
                 if let existing = site.existing, let (png, _) = safePNG(existing) {
                     let isPNG = existing.starts(with: [UInt8]( [137, 80, 78, 71, 13, 10, 26, 10] ))
                     let data = isPNG ? existing : png
@@ -628,7 +699,7 @@ func fetchIcon(_ host: String) async -> Pending? {
                     Text(site.host).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Spacer()
-                Text(pending[site.host] != nil ? l10n("Gotowa") : (customHosts.contains(site.host) ? l10n("Własna") : site.status))
+                Text(pending[site.host] != nil ? l10n("Gotowa") : (recoveryHosts.contains(site.host) ? l10n("Własna ikona została zmieniona") : (customHosts.contains(site.host) ? l10n("Własna") : site.status)))
                     .font(.caption).foregroundStyle(pending[site.host] != nil ? Color.green : Color.secondary)
             }.padding(9).background(marked.contains(site.host) ? purple.opacity(0.16) : Color.clear, in: RoundedRectangle(cornerRadius: 8)).contentShape(Rectangle())
         }.buttonStyle(.plain).accessibilityLabel(site.title).accessibilityAddTraits(marked.contains(site.host) ? .isSelected : [])
@@ -689,7 +760,7 @@ func fetchIcon(_ host: String) async -> Pending? {
             }.padding(.bottom, 4)
             Text(l10n("BIBLIOTEKA")).font(.caption2.weight(.semibold)).tracking(1.1).foregroundStyle(.secondary)
             scopeButton(l10n("Wszystkie Ulubione"), symbol: "square.grid.2x2", value: .all, count: sites.count)
-            scopeButton(l10n("Do sprawdzenia"), symbol: "exclamationmark.circle", value: .all, status: l10n("Brakujące"), count: sites.filter { $0.needsRepair }.count)
+            scopeButton(l10n("Do sprawdzenia"), symbol: "exclamationmark.circle", value: .all, status: l10n("Brakujące"), count: sites.filter { $0.needsRepair || recoveryHosts.contains($0.host) }.count)
             scopeButton(l10n("Własne"), symbol: "sparkle", value: .all, status: l10n("Własne"), count: customHosts.count)
             scopeButton(l10n("Gotowe"), symbol: "checkmark.circle", value: .all, status: l10n("Gotowe"), count: pending.count)
             scopeButton(l10n("Bez folderu"), symbol: "star", value: .root)
@@ -723,12 +794,12 @@ func fetchIcon(_ host: String) async -> Pending? {
             HStack(alignment: .center) {
                 VStack(alignment: .leading, spacing: 5) {
                     Text(scope == .all && filter != l10n("Wszystkie") ? (filter == l10n("Brakujące") ? l10n("Do sprawdzenia") : filter) : scopeLabel).font(.system(size: 28, weight: .semibold)).lineLimit(1)
-                    Text(l10n("{0} stron · {1} do sprawdzenia", String(scoped.count), String(scoped.filter { $0.needsRepair }.count)))
+                    Text(l10n("{0} stron · {1} do sprawdzenia", String(scoped.count), String(scoped.filter { $0.needsRepair || recoveryHosts.contains($0.host) }.count)))
                         .font(.callout).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Spacer(minLength: 5)
                 Button(action: prepare) { Label(l10n("Szybka naprawa"), systemImage: "wand.and.stars") }
-                    .buttonStyle(.borderedProminent).help(l10n("Przygotuj brakujące i nieaktywne ikony. Zatwierdź przed zapisem."))
+                    .buttonStyle(.borderedProminent).help(l10n("Przygotuj brakujące, nieaktywne lub zmienione własne ikony. Zatwierdź przed zapisem."))
                     .disabled(busy || permissionDenied || missing.isEmpty)
             }
         }.fixedSize(horizontal: false, vertical: true)
@@ -802,6 +873,9 @@ func fetchIcon(_ host: String) async -> Pending? {
         Button(l10n("Importuj grafikę")) { choose(item) }.disabled(!item.registered || busy)
         Button(l10n("Podgląd")) { quickLook = item }
         Button(l10n("Historia ikony")) { openHistory(item) }
+        if recoveryHosts.contains(item.host) {
+            Button(l10n("Odzyskaj własną ikonę")) { recoverProtectedIcon(item) }.disabled(busy || pending[item.host] != nil)
+        }
         Divider()
         Button(l10n("Przywróć domyślną ikonę Safari"), role: .destructive) { requestReset([item.host], in: scope) }.disabled(!item.registered || busy)
     }
@@ -811,9 +885,9 @@ func fetchIcon(_ host: String) async -> Pending? {
             VStack(spacing: 7) {
                 ZStack(alignment: .topTrailing) {
                     safariTile(item, size: CGFloat(iconSize), after: true).shadow(color: .black.opacity(0.12), radius: 3, y: 2)
-                    if pending[item.host] != nil || item.needsRepair || customHosts.contains(item.host) {
-                        Image(systemName: pending[item.host] != nil ? "checkmark.circle.fill" : (item.needsRepair ? "exclamationmark.circle.fill" : "sparkle"))
-                            .font(.system(size: 12, weight: .semibold)).foregroundStyle(pending[item.host] != nil ? Color.green : (item.needsRepair ? .orange : purple))
+                    if pending[item.host] != nil || item.needsRepair || recoveryHosts.contains(item.host) || customHosts.contains(item.host) {
+                        Image(systemName: pending[item.host] != nil ? "checkmark.circle.fill" : ((item.needsRepair || recoveryHosts.contains(item.host)) ? "exclamationmark.circle.fill" : "sparkle"))
+                            .font(.system(size: 12, weight: .semibold)).foregroundStyle(pending[item.host] != nil ? Color.green : ((item.needsRepair || recoveryHosts.contains(item.host)) ? .orange : purple))
                             .padding(3).background(surface, in: Circle()).offset(x: 5, y: -5)
                     }
                 }
@@ -875,6 +949,9 @@ func fetchIcon(_ host: String) async -> Pending? {
             Button(l10n("Importuj grafikę")) { choose(item) }.disabled(busy || !item.registered)
             Button(l10n("Napraw wyświetlanie")) { prepareSites([item]) }.disabled(busy || !item.registered || pending[item.host] != nil)
             Button(l10n("Historia ikony")) { openHistory(item) }.disabled(busy)
+            if recoveryHosts.contains(item.host) {
+                Button(l10n("Odzyskaj własną ikonę")) { recoverProtectedIcon(item) }.disabled(busy || pending[item.host] != nil)
+            }
             Button(l10n("Informacje")) { showTechnical.toggle() }
             if pending[item.host] != nil {
                 Divider()
@@ -895,6 +972,13 @@ func fetchIcon(_ host: String) async -> Pending? {
                 }
                 Spacer(minLength: 0)
                 iconActions(item)
+            }
+            if recoveryHosts.contains(item.host) && pending[item.host] == nil {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label(l10n("Własna ikona została zmieniona"), systemImage: "exclamationmark.circle").font(.callout.weight(.medium))
+                    Text(l10n("Twoja grafika jest zachowana lokalnie. Odzyskaj ją i zatwierdź zmianę.")).font(.caption).foregroundStyle(.secondary)
+                    Button(l10n("Odzyskaj własną ikonę")) { recoverProtectedIcon(item) }.buttonStyle(.bordered).disabled(busy || permissionDenied)
+                }.padding(10).frame(maxWidth: .infinity, alignment: .leading).background(Color.orange.opacity(0.09), in: RoundedRectangle(cornerRadius: 9))
             }
             if let data = pending[item.host]?.png ?? item.existing {
                 let currentStyle = pending[item.host]?.display ?? item.displayCode.flatMap(SafariIconDisplay.init(rawValue:))

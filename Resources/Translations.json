@@ -1,5 +1,9 @@
 {
   "de": {
+    "Odzyskaj własną ikonę": "Eigenes Symbol wiederherstellen",
+    "Przygotuj brakujące, nieaktywne lub zmienione własne ikony. Zatwierdź przed zapisem.": "Fehlende, inaktive oder geänderte eigene Symbole vorbereiten. Vor dem Anwenden prüfen.",
+    "Twoja grafika jest zachowana lokalnie. Odzyskaj ją i zatwierdź zmianę.": "Dein Bild ist lokal gespeichert. Stelle es wieder her und wende die Änderung an.",
+    "Własna ikona została zmieniona": "Eigenes Symbol wurde geändert",
     " Nie odtworzono: ": " Nicht wiederhergestellt: ",
     " Nie udało się odtworzyć: {0}": " Wiederherstellung fehlgeschlagen: {0}",
     " · tło: ": " · Hintergrund: ",
@@ -301,6 +305,10 @@
     "Zmień grafikę": "Bild ändern"
   },
   "en": {
+    "Odzyskaj własną ikonę": "Restore custom icon",
+    "Przygotuj brakujące, nieaktywne lub zmienione własne ikony. Zatwierdź przed zapisem.": "Prepare missing, inactive or changed custom icons. Review before applying.",
+    "Twoja grafika jest zachowana lokalnie. Odzyskaj ją i zatwierdź zmianę.": "Your image is saved locally. Restore it and apply the change.",
+    "Własna ikona została zmieniona": "Custom icon has changed",
     " Nie odtworzono: ": " Not restored: ",
     " Nie udało się odtworzyć: {0}": " Could not restore: {0}",
     " · tło: ": " · background: ",
@@ -602,6 +610,10 @@
     "Zmień grafikę": "Change image"
   },
   "es": {
+    "Odzyskaj własną ikonę": "Recuperar icono personalizado",
+    "Przygotuj brakujące, nieaktywne lub zmienione własne ikony. Zatwierdź przed zapisem.": "Prepara iconos ausentes, inactivos o personalizados modificados. Revisa antes de aplicar.",
+    "Twoja grafika jest zachowana lokalnie. Odzyskaj ją i zatwierdź zmianę.": "Tu imagen se guarda localmente. Recupérala y aplica el cambio.",
+    "Własna ikona została zmieniona": "El icono personalizado ha cambiado",
     " Nie odtworzono: ": " Sin restaurar: ",
     " Nie udało się odtworzyć: {0}": " No se pudo restaurar: {0}",
     " · tło: ": " · fondo: ",
@@ -903,6 +915,10 @@
     "Zmień grafikę": "Cambiar imagen"
   },
   "fr": {
+    "Odzyskaj własną ikonę": "Restaurer l’icône personnalisée",
+    "Przygotuj brakujące, nieaktywne lub zmienione własne ikony. Zatwierdź przed zapisem.": "Préparez les icônes manquantes, inactives ou personnalisées modifiées. Vérifiez avant d’appliquer.",
+    "Twoja grafika jest zachowana lokalnie. Odzyskaj ją i zatwierdź zmianę.": "Votre image est enregistrée localement. Restaurez-la et appliquez la modification.",
+    "Własna ikona została zmieniona": "L’icône personnalisée a changé",
     " Nie odtworzono: ": " Non restauré : ",
     " Nie udało się odtworzyć: {0}": " Restauration impossible : {0}",
     " · tło: ": " · fond : ",
@@ -1204,6 +1220,10 @@
     "Zmień grafikę": "Changer l’image"
   },
   "pl": {
+    "Odzyskaj własną ikonę": "Odzyskaj własną ikonę",
+    "Przygotuj brakujące, nieaktywne lub zmienione własne ikony. Zatwierdź przed zapisem.": "Przygotuj brakujące, nieaktywne lub zmienione własne ikony. Zatwierdź przed zapisem.",
+    "Twoja grafika jest zachowana lokalnie. Odzyskaj ją i zatwierdź zmianę.": "Twoja grafika jest zachowana lokalnie. Odzyskaj ją i zatwierdź zmianę.",
+    "Własna ikona została zmieniona": "Własna ikona została zmieniona",
     " Nie odtworzono: ": " Nie odtworzono: ",
     " Nie udało się odtworzyć: {0}": " Nie udało się odtworzyć: {0}",
     " · tło: ": " · tło: ",
@@ -1505,6 +1525,10 @@
     "Zmień grafikę": "Zmień grafikę"
   },
   "uk": {
+    "Odzyskaj własną ikonę": "Відновити власну іконку",
+    "Przygotuj brakujące, nieaktywne lub zmienione własne ikony. Zatwierdź przed zapisem.": "Підготуйте відсутні, неактивні або змінені власні іконки. Перевірте перед застосуванням.",
+    "Twoja grafika jest zachowana lokalnie. Odzyskaj ją i zatwierdź zmianę.": "Ваше зображення збережено локально. Відновіть його та застосуйте зміну.",
+    "Własna ikona została zmieniona": "Власну іконку змінено",
     " Nie odtworzono: ": " Не відновлено: ",
     " Nie udało się odtworzyć: {0}": " Не вдалося відновити: {0}",
     " · tło: ": " · фон: ",
