@@ -8,7 +8,7 @@ import UniformTypeIdentifiers
 struct FixError: LocalizedError { let message: String; var errorDescription: String? { message } }
 func fail(_ s: String) -> FixError { FixError(message: s) }
 struct Site: Identifiable {
-    var id: String { host }; let host: String; var names: [String]; let locations: [FavoriteLink]; let registered: Bool; let existing: Data?; let active: Bool; let downloadFlags: Int?; let pixelSize: Int?
+    var id: String { host }; let host: String; var names: [String]; let locations: [FavoriteLink]; let registered: Bool; let existing: Data?; let active: Bool; let downloadFlags: Int?; let pixelSize: Int?; let displayCode: Int?
     var title: String { names.joined(separator: " · ") }
     var needsRepair: Bool { !registered || existing == nil || !active || downloadFlags != 1 }
     var status: String {
@@ -20,8 +20,8 @@ struct Site: Identifiable {
     }
 }
 struct Pending {
-    let png: Data; let source: String; let custom: Bool
-    init(png: Data, source: String, custom: Bool = false) { self.png = png; self.source = source; self.custom = custom }
+    let png: Data; let source: String; let custom: Bool; let display: SafariIconDisplay?; let expectedDigest: String?
+    init(png: Data, source: String, custom: Bool = false, display: SafariIconDisplay? = nil, expectedDigest: String? = nil) { self.png = png; self.source = source; self.custom = custom; self.display = display; self.expectedDigest = expectedDigest }
 }
 func iconDigest(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
 
@@ -78,6 +78,10 @@ struct Cache {
         guard cols.contains("host"), cols.contains("download_status_flags"), let flag = ["touch_icon_is_in_cache", "icon_is_in_cache"].first(where: {cols.contains($0)}) else { throw fail("Nieznany schemat cache Safari. Zapis jest zablokowany.") }
         return flag
     }
+    func hasDisplayColumn() throws -> Bool {
+        let cols = try rows(db, "PRAGMA table_info(cache_settings);")
+        return cols.contains { ($0["name"] as? String) == "transparency_analysis_result" }
+    }
     // Probe the actual Safari files, not a guessed TCC authorization flag.
     // Read-only: no test writes to the user's cache.
     func checkReadAccess() throws {
@@ -95,13 +99,16 @@ struct Cache {
         guard let root = obj as? [String: Any] else { throw fail("Nieznany format zakładek.") }
         let index = try FavoritesIndex(root: root)
         let named = Dictionary(grouping: index.links, by: \.host)
-        let dbRows = try rows(db, "SELECT host, \(flag) AS active, download_status_flags AS download_flags FROM cache_settings;")
+        let displayExpr = try hasDisplayColumn() ? "transparency_analysis_result" : "NULL"
+        let dbRows = try rows(db, "SELECT host, \(flag) AS active, download_status_flags AS download_flags, \(displayExpr) AS display_code FROM cache_settings;")
+        var displayCodes: [String: Int] = [:]
         var registered: [String: [Int]] = [:]
         var downloadFlags: [String: Int] = [:]
         for row in dbRows {
             if let h = row["host"] as? String {
                 registered[h,default: []].append(row["active"] as? Int ?? 0)
                 downloadFlags[h] = row["download_flags"] as? Int
+                displayCodes[h] = row["display_code"] as? Int
             }
         }
         var sites: [Site] = []
@@ -123,7 +130,7 @@ struct Cache {
             let isActive: Bool = flags.first == 1
             let site = Site(host: host, names: names, locations: links,
                             registered: isRegistered, existing: existing, active: isActive,
-                            downloadFlags: downloadFlags[host], pixelSize: pixelSize)
+                            downloadFlags: downloadFlags[host], pixelSize: pixelSize, displayCode: displayCodes[host])
             sites.append(site)
         }
         sites.sort { lhs, rhs in
@@ -142,9 +149,14 @@ struct Cache {
         let flag = try schema(); let current = try scan().sites; let byHost = Dictionary(uniqueKeysWithValues: current.map { ($0.host, $0) })
         for (host, item) in pending {
             guard let site = byHost[host], site.locations.contains(where: { scope.includes($0.folder) }), site.registered, site.existing == nil || allowingReplacement.contains(host) || (site.needsRepair && site.existing == item.png) else { throw fail("Stan \(host) uległ zmianie lub rekord nie istnieje. Przeskanuj ponownie.") }
+            if let expected = item.expectedDigest, site.existing.map(iconDigest) != expected { throw fail("Ikona \(host) zmieniła się od przygotowania. Przeskanuj i ponów.") }
             if Cache.fm.fileExists(atPath: icon(host).path), try icon(host).resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink == true { throw fail("Odmowa zapisu do dowiązania symbolicznego.") }
         }
         guard current.contains(where: { $0.registered && $0.existing != nil && $0.active }) else { throw fail("Nie potwierdzono mapowania nazw plików MD5 dla tej wersji Safari. Zapis zablokowany.") }
+        let supportsDisplay = try hasDisplayColumn()
+        if !supportsDisplay && pending.values.contains(where: { $0.display != nil }) {
+            throw fail("Ta wersja cache Safari nie udostępnia parametru stylu ikon. Nie zapisano zmian.")
+        }
         let oldRegistry = try registry()
         var newRegistry = oldRegistry
         for (host, item) in pending {
@@ -163,7 +175,10 @@ struct Cache {
             guard !safariRunning else { throw fail("Safari zostało otwarte podczas zapisu.") }
             if oldRegistry != newRegistry { try saveRegistry(newRegistry); registryChanged = true }
             guard !safariRunning else { throw fail("Safari zostało otwarte podczas zapisu.") }
-            let statements = pending.keys.sorted().map { "UPDATE cache_settings SET \(flag)=1, download_status_flags=1 WHERE host=\(quote($0));" }.joined(separator: "\n")
+            let statements = pending.keys.sorted().map { host -> String in
+                let assignment = iconDisplayAssignment(pending[host]?.display)
+                return "UPDATE cache_settings SET \(flag)=1, download_status_flags=1\(assignment) WHERE host=\(quote(host));"
+            }.joined(separator: "\n")
             _ = try sql(db, "BEGIN IMMEDIATE;\n" + statements + "\nCOMMIT;", write: true)
             return (saved, pending.count)
         } catch {
@@ -374,6 +389,22 @@ func fetchIcon(_ host: String) async -> Pending? {
             }
         }
     }
+    func prepareDisplay(_ targets: [Site], style: SafariIconDisplay) {
+        guard !busy, !permissionDenied else { return }
+        do {
+            guard try store.hasDisplayColumn() else { throw fail("Brak parametru stylu w tej wersji Safari. Nic nie zmieniono.") }
+            var count = 0
+            for site in targets where site.registered {
+                guard let data = pending[site.host]?.png ?? site.existing else { continue }
+                let previous = pending[site.host]
+                let expected = previous?.expectedDigest ?? site.existing.map(iconDigest)
+                pending[site.host] = Pending(png: data, source: (previous.map { $0.source + " · " } ?? "Zachowano obraz · ") + style.label, custom: true, display: style, expectedDigest: expected)
+                replacements.insert(site.host)
+                count += 1
+            }
+            message = "Przygotowano styl dla \(count) ikon (bez pobierania). Zamknij Safari i kliknij Zastosuj."
+        } catch { handleOperationError(error) }
+    }
     func prepare() { prepareSites(missing) }
     func prepareMarked() { prepareSites(markedSites) }
     func prepareSites(_ targets: [Site]) {
@@ -417,9 +448,10 @@ func fetchIcon(_ host: String) async -> Pending? {
     func cacheDetails(_ site: Site) -> String {
         let flags = site.downloadFlags.map { String($0) } ?? "brak"
         let size = site.pixelSize.map { "\($0) px" } ?? "brak"
-        return "Cache: \(size) · aktywna: \(site.active ? "tak" : "nie") · status: \(flags)"
+        let display = site.displayCode.map { code in SafariIconDisplay(rawValue: code)?.label ?? "Kod \(code)" } ?? "Nieznany"
+        return "Cache: \(size) · aktywna: \(site.active ? "tak" : "nie") · status: \(flags) · styl: \(display)"
     }
-    func choose(_ s: Site) { let panel = NSOpenPanel(); panel.allowedContentTypes = [.image]; panel.canChooseDirectories = false; guard panel.runModal() == .OK, let url = panel.url else { return }; do { let data = try Data(contentsOf: url); guard let (png,_) = safePNG(data) else { throw fail("Nieobsługiwany lub uszkodzony obraz (limit 8 MB).") }; pending[s.host] = Pending(png: png,source:url.lastPathComponent, custom: true); if s.existing != nil { replacements.insert(s.host) }; message = "Przygotowano własną ikonę. Zmiana wymaga zatwierdzenia." } catch { message = error.localizedDescription } }
+    func choose(_ s: Site) { let panel = NSOpenPanel(); panel.allowedContentTypes = [.image]; panel.canChooseDirectories = false; guard panel.runModal() == .OK, let url = panel.url else { return }; do { let data = try Data(contentsOf: url); guard let (png,_) = safePNG(data) else { throw fail("Nieobsługiwany lub uszkodzony obraz (limit 8 MB).") }; pending[s.host] = Pending(png: png,source:url.lastPathComponent, custom: true, display: hasTransparentPixels(png) ? .systemTile : .fullTile); if s.existing != nil { replacements.insert(s.host) }; message = "Przygotowano własną ikonę. Zmiana wymaga zatwierdzenia." } catch { message = error.localizedDescription } }
     func write() {
         guard !permissionDenied else { showPermission = true; return }
         let batch = scopedPending
@@ -450,7 +482,7 @@ func fetchIcon(_ host: String) async -> Pending? {
                 Image(nsImage: NSApplication.shared.applicationIconImage).resizable().scaledToFit().frame(width: 34, height: 34)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Icon Fixer").font(.headline)
-                    Text("Safari • 0.3").font(.caption).foregroundStyle(.secondary)
+                    Text("Safari • 0.3.1").font(.caption).foregroundStyle(.secondary)
                 }
             }.padding(.bottom, 4)
             Text("BIBLIOTEKA").font(.caption2.weight(.semibold)).tracking(1.1).foregroundStyle(.secondary)
@@ -536,6 +568,10 @@ func fetchIcon(_ host: String) async -> Pending? {
                 Spacer(minLength: 0)
                 Button(action: prepare) { Image(systemName: "arrow.down.circle") }.help("Pobierz brakujące ikony").disabled(busy || permissionDenied || missing.isEmpty)
                 Button(action: prepareMarked) { Label("Napraw", systemImage: "wand.and.stars") }.disabled(busy || markedSites.isEmpty)
+                Menu {
+                    Button("Pełny kafelek — bez szarej ramki") { prepareDisplay(markedSites, style: .fullTile) }
+                    Button("Tło systemowe") { prepareDisplay(markedSites, style: .systemTile) }
+                } label: { Label("Styl", systemImage: "square.inset.filled") }.disabled(busy || markedSites.isEmpty)
                 resetMenu
             }.controlSize(.small)
         }.fixedSize(horizontal: false, vertical: true)
@@ -596,6 +632,10 @@ func fetchIcon(_ host: String) async -> Pending? {
                 .buttonStyle(.borderedProminent).controlSize(.large).disabled(busy || !s.registered)
             Button { prepareSites([s]) } label: { Label("Wymuś naprawę", systemImage: "arrow.clockwise").frame(maxWidth: .infinity, alignment: .leading) }.disabled(busy || !s.registered)
             Button { choose(s) } label: { Label("Importuj grafikę", systemImage: "square.and.arrow.down").frame(maxWidth: .infinity, alignment: .leading) }.disabled(busy || !s.registered)
+            Menu {
+                Button("Pełny kafelek — bez szarej ramki") { prepareDisplay([s], style: .fullTile) }
+                Button("Tło systemowe") { prepareDisplay([s], style: .systemTile) }
+            } label: { Label("Styl w Safari", systemImage: "square.inset.filled").frame(maxWidth: .infinity, alignment: .leading) }.disabled(busy || !s.registered || (pending[s.host] == nil && s.existing == nil))
             if pending[s.host] != nil {
                 Button("Odrzuć zmianę") { pending.removeValue(forKey: s.host); replacements.remove(s.host) }.disabled(busy)
             }

@@ -64,7 +64,6 @@ struct IconArtwork {
     }
 }
 func composeArtwork(_ art: IconArtwork, background: IconBackground, color: NSColor, inset: Double, lightening: Double) -> Data? {
-    guard let ctx = CGContext(data: nil, width: 256, height: 256, bitsPerComponent: 8, bytesPerRow: 1024, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: iconBitmapInfo) else { return nil }
     let fill: NSColor?
     switch background {
     case .original: fill = art.backdrop.map(nsColor)
@@ -73,6 +72,8 @@ func composeArtwork(_ art: IconArtwork, background: IconBackground, color: NSCol
     case .custom: fill = color
     case .automatic: fill = nsColor((art.dominant ?? IconRGB(r: 128, g: 128, b: 128)).lightened(max(0.30, min(0.50, lightening))))
     }
+    let bitmapInfo = fill == nil ? iconBitmapInfo : (CGImageAlphaInfo.noneSkipLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue)
+    guard let ctx = CGContext(data: nil, width: 256, height: 256, bitsPerComponent: 8, bytesPerRow: 1024, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: bitmapInfo) else { return nil }
     if let fill {
         ctx.setFillColor((fill.usingColorSpace(.deviceRGB) ?? .white).withAlphaComponent(1).cgColor)
         ctx.fill(CGRect(x: 0, y: 0, width: 256, height: 256))

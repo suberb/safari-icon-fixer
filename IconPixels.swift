@@ -97,3 +97,14 @@ struct IconRaster {
         return IconRGB(r:v.r/v.count,g:v.g/v.count,b:v.b/v.count)
     }
 }
+
+// Safari's private cache display styles; empirically documented, not an Apple API.
+enum SafariIconDisplay: Int {
+    case systemTile = 0
+    case fullTile = 1
+    var label: String { self == .fullTile ? "Pełny kafelek" : "Tło systemowe" }
+}
+func iconDisplayAssignment(_ style: SafariIconDisplay?) -> String {
+    guard let style else { return "" }
+    return ", transparency_analysis_result=\(style.rawValue)"
+}

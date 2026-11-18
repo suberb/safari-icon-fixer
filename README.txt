@@ -1,3 +1,11 @@
+ZMIANA 0.3.1 — TRYB WYŚWIETLANIA SAFARI
+Szara ramka może pozostać nawet po wypełnieniu całego PNG: Safari ma odrębne pole transparency_analysis_result w cache_settings. Wartość 1 jest publicznie opisywana jako tryb pełnego kafelka, a 0 jako mniejsza ikona na tle systemowym. To niepubliczny mechanizm, nie gwarantowany przez Apple.
+- Zaznacz problematyczne ikony, wybierz Styl → Pełny kafelek — bez szarej ramki, zamknij Safari (⌘Q), kliknij Zastosuj i otwórz Safari ponownie. Przygotowanie stylu wykorzystuje istniejące pliki bez ponownego pobierania ani skalowania. Jeśli w samym obrazie jest przezroczysty margines, użyj edytora i ustaw białe tło.
+- W edytorze tryb Automatycznie wybiera pełny kafelek dla nieprzezroczystego obrazu, tło systemowe dla obrazu z przezroczystością; można wymusić oba tryby. Jednolite tła są zapisywane bez kanału alfa.
+- Zmiana stylu dotyczy wyłącznie wybranych domen; kopia cache powstaje przed zapisem. Jeśli kolumny brakuje, operacja stylu jest blokowana. Nie zmieniamy stylu pozostałych rekordów. Ikony domen współdzielone z innymi folderami mogą zmienić się również tam.
+- Testy Linux: parser Swift, testy modelu i SQLite na syntetycznych danych. Pełna kompilacja SwiftUI, test RGB z CoreGraphics i renderowanie Safari wymagają macOS. Testuj-renderowanie.command uruchamia testy grafiki na macOS.
+Referencje: https://github.com/Pidenko/FavTool ; https://github.com/Franvy/Tabnook/releases ; https://gist.github.com/dardo82/f7cc7c5c864fb5afa04bb12ecbcf3a9f (komentarz 31.01.2023).
+
 Safari Icon Fixer 0.3.0 — przeprojektowane UI
 
 Nowy układ: panel folderów, biblioteka z widokiem kafelków i listy, panel wybranej ikony. Fioletowy akcent, natywne kolory jasne/ciemne macOS. Filtr Własne wymaga rejestru podmian z 0.2.9+. Edytor: porównanie przed/po, wyszukiwarka Google wewnątrz aplikacji, menu źródeł i importu, niezależnie przewijany panel ustawień tła. Zmniejszono domyślne powiększenie strony Google i pominięto komunikaty o zwykłym przerwaniu nawigacji. Nie gwarantuje to poprawnego wyboru obrazu — Google może zmieniać stronę i blokować pobieranie. W razie problemu użyj importu ze schowka/pliku. Mechanizmy zapisu, resetu i uprawnień zachowano z poprzedniej wersji. Minimalny rozmiar głównego okna 900 × 510 punktów. Brak SDK macOS: nie sprawdzono faktycznego wyglądu, pełnej kompilacji ani działania Google na żywo.

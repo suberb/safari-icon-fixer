@@ -84,6 +84,7 @@ private struct Checkerboard: View {
     @State private var selected: IconCandidate?
     @State private var background: IconBackground = .original
     @State private var color: Color = .white
+    @State private var styleChoice = "Automatycznie"
     @State private var inset = 0.12
     @State private var lightening = 0.40
     @State private var art: IconArtwork?
@@ -103,6 +104,11 @@ private struct Checkerboard: View {
     private var preview: Data? {
         guard let art else { return nil }
         return composeArtwork(art, background: background, color: NSColor(color), inset: inset, lightening: lightening)
+    }
+    private func chosenStyle(_ data: Data) -> SafariIconDisplay {
+        if styleChoice == "Pełny kafelek" { return .fullTile }
+        if styleChoice == "Tło systemowe" { return .systemTile }
+        return hasTransparentPixels(data) ? .systemTile : .fullTile
     }
     private func start(website: Bool) {
         let term = query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -305,6 +311,13 @@ private struct Checkerboard: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Tło").font(.callout.weight(.medium))
                     Picker("Tło", selection: $background) { ForEach(IconBackground.allCases) { Text($0.rawValue).tag($0) } }.labelsHidden().disabled(art?.separate != true)
+                    Text("Styl w Safari").font(.callout.weight(.medium))
+                    Picker("Styl w Safari", selection: $styleChoice) {
+                        Text("Automatycznie").tag("Automatycznie")
+                        Text("Pełny kafelek").tag("Pełny kafelek")
+                        Text("Tło systemowe").tag("Tło systemowe")
+                    }.labelsHidden()
+                    Text("Pełny kafelek usuwa systemowy margines; automatycznie wybierany dla pełnego tła.").font(.caption).foregroundStyle(.secondary)
                     if background == .custom { ColorPicker("Własny kolor", selection: $color, supportsOpacity: false) }
                     if background == .automatic {
                         HStack {
@@ -351,7 +364,7 @@ private struct Checkerboard: View {
             Spacer(minLength: 5)
             Button("Anuluj") { dismiss() }
             Button {
-                if let data = preview, let selected { onChoose(Pending(png: data, source: selected.source + " · tło: " + background.rawValue, custom: true)); dismiss() }
+                if let data = preview, let selected { onChoose(Pending(png: data, source: selected.source + " · tło: " + background.rawValue, custom: true, display: chosenStyle(data))); dismiss() }
             } label: { Label("Użyj ikony", systemImage: "checkmark") }.buttonStyle(.borderedProminent).controlSize(.large).disabled(preview == nil || loading || picking)
         }.padding(12)
     }
