@@ -1,7 +1,9 @@
-SAFARI ICON FIXER 0.2.5 — prototyp lokalny
+SAFARI ICON FIXER 0.2.6 — prototyp lokalny
 
 Cel: duże ikony Ulubionych na stronie startowej Safari. Nie dotyczy ikon kart.
 Wymagania: macOS 13+; Apple Silicon lub Intel; Apple Command Line Tools.
+
+ZMIANA 0.2.6: Automatyczne okno przy wykryciu odmowy dostępu do Safari. Przycisk otwiera panel Pełny dostęp do dysku, a po powrocie aplikacja ponawia odczyt. Można też ręcznie ponowić skan albo odłożyć nadanie dostępu. Błędy brakujących plików lub nieznanego schematu nie są traktowane automatycznie jako odmowa dostępu. Dostęp nadaje użytkownik w ustawieniach; macOS może wymagać restartu aplikacji. Próba sprawdzenia dostępu nie zapisuje danych.
 
 ZMIANA 0.2.5: grafika ikony pomniejszona do 89% na przezroczystym płótnie 1024 px; wszystkie rozmiary ICNS przebudowane. Przeprojektowano układ okna: kompaktowe, stałe nagłówek i stopka, elastyczna lista oraz niezależnie przewijany panel szczegółów. Minimalny rozmiar treści 780 × 510 pt, domyślny 940 × 640 pt. Funkcje cache bez zmian. Rozmiar i wygląd wymagają potwierdzenia na macOS.
 

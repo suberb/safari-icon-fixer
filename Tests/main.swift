@@ -23,3 +23,15 @@ precondition(Set(rootBatch.keys) == ["google.com","youtube.com"])
 precondition(Set(folderBatch.keys) == ["google.com","openai.com"])
 do { _ = try FavoritesIndex(root:folder("root",[folder("BookmarksMenu",[])])); fatalError("missing favorites must fail") } catch FavoritesIndex.ReadError.unknownFavorites {}
 print("OK: root / all / nested folders / duplicate names / shared hosts / empty folder / scoped batches / missing favorites")
+
+// Permission denial is distinct from absent files and schema errors.
+precondition(isSafariPermissionError(NSError(domain: NSCocoaErrorDomain, code: 257)))
+precondition(isSafariPermissionError(NSError(domain: NSCocoaErrorDomain, code: 513)))
+precondition(isSafariPermissionError(NSError(domain: NSPOSIXErrorDomain, code: 1)))
+precondition(isSafariPermissionError(NSError(domain: NSPOSIXErrorDomain, code: 13)))
+precondition(isSafariPermissionError(NSError(domain: "Wrapped", code: 0, userInfo: [NSUnderlyingErrorKey: NSError(domain: NSPOSIXErrorDomain, code: 13)])))
+precondition(isSafariPermissionError(NSError(domain: "SQLite", code: 0, userInfo: [NSLocalizedDescriptionKey: "Operation not permitted"])))
+precondition(!isSafariPermissionError(NSError(domain: NSCocoaErrorDomain, code: 260)))
+precondition(!isSafariPermissionError(NSError(domain: NSPOSIXErrorDomain, code: 2)))
+precondition(!isSafariPermissionError(NSError(domain: "Schema", code: 0, userInfo: [NSLocalizedDescriptionKey: "Nieznany schemat cache Safari."])))
+print("OK: permission denial / wrapped error / missing files / schema error")

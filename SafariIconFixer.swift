@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 import AppKit
 import CryptoKit
 import ImageIO
@@ -64,7 +65,18 @@ struct Cache {
         guard cols.contains("host"), cols.contains("download_status_flags"), let flag = ["touch_icon_is_in_cache", "icon_is_in_cache"].first(where: {cols.contains($0)}) else { throw fail("Nieznany schemat cache Safari. Zapis jest zablokowany.") }
         return flag
     }
+    // Probe the actual Safari files, not a guessed TCC authorization flag.
+    // Read-only: no test writes to the user's cache.
+    func checkReadAccess() throws {
+        _ = try Cache.fm.contentsOfDirectory(atPath: safari.path)
+        for file in [safari.appendingPathComponent("Bookmarks.plist"), db] {
+            let handle = try FileHandle(forReadingFrom: file)
+            try handle.close()
+        }
+        _ = try Cache.fm.contentsOfDirectory(atPath: images.path)
+    }
     func scan() throws -> (sites: [Site], folders: [FavoriteFolder]) {
+        try checkReadAccess()
         let flag = try schema(); let bookmark = safari.appendingPathComponent("Bookmarks.plist")
         let obj = try PropertyListSerialization.propertyList(from: Data(contentsOf: bookmark), options: [], format: nil)
         guard let root = obj as? [String: Any] else { throw fail("Nieznany format zakładek.") }
@@ -199,6 +211,10 @@ func fetchIcon(_ host: String) async -> Pending? {
     @State private var marked = Set<String>()
     @State private var folders: [FavoriteFolder] = []; @State private var scope: FavoriteScope = .root
     @State private var selected: String?; @State private var filter = "Wszystkie"; @State private var search = ""; @State private var message = "Przeskanuj Ulubione Safari. Nic nie zostanie zmienione."; @State private var busy = false; @State private var confirm = false; @State private var confirmRestore = false; @State private var chosenBackup: URL?
+    @State private var permissionDenied = false
+    @State private var showPermission = false
+    @State private var waitingForPermission = false
+    @State private var permissionHelp = ""
     var scoped: [Site] {
         var result: [Site] = []
         for original in sites {
@@ -220,18 +236,47 @@ func fetchIcon(_ host: String) async -> Pending? {
     var scopedPending: [String: Pending] { pending.filter { pair in scoped.contains { $0.host == pair.key } } }
     var site: Site? { shown.first { $0.host == selected } }
     var scopeLabel: String { switch scope { case .all: return "Wszystkie Ulubione"; case .root: return "Bez folderu"; case .folder: return folders.first { $0.scope == scope }?.label ?? "Folder" } }
-    func scan() {
+    func openPrivacySettings() {
+        waitingForPermission = true
+        permissionHelp = "Włącz dostęp dla Safari Icon Fixer, a następnie wróć tutaj. Jeśli dostęp nadal nie działa, zamknij aplikację (⌘Q) i uruchom ją ponownie."
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"), NSWorkspace.shared.open(url) { return }
+        if let url = URL(string: "x-apple.systempreferences:") { _ = NSWorkspace.shared.open(url) }
+        permissionHelp = "Otwórz Prywatność i ochrona → Pełny dostęp do dysku. Jeśli ustawienia nie otworzyły się automatycznie, uruchom je z menu Apple."
+    }
+    func reportPermission(_ error: Error, present: Bool = true) {
+        permissionDenied = true
+        if present { showPermission = true }
+        message = "Brak dostępu do danych Safari: \(error.localizedDescription)"
+        permissionHelp = "Jeśli dostęp jest już włączony, zamknij aplikację (⌘Q) i uruchom ją ponownie."
+    }
+    func handleOperationError(_ error: Error) {
+        if isSafariPermissionError(error) { reportPermission(error) }
+        else { message = error.localizedDescription }
+    }
+    func scan() { runScan(presentPermission: true) }
+    func runScan(presentPermission: Bool) {
+        guard !busy else { return }
         do {
             let result = try store.scan(); sites = result.sites; folders = result.folders
             if case .folder = scope, !folders.contains(where: { $0.scope == scope }) { scope = .root }
             let hosts = Set(sites.map(\.host)); pending = pending.filter { hosts.contains($0.key) }; replacements.formIntersection(hosts); marked.formIntersection(hosts)
+            permissionDenied = false; showPermission = false; waitingForPermission = false; permissionHelp = ""
             message = "Odczytano \(sites.count) domen w Ulubionych. W wybranym zakresie: \(scoped.count)."
-        } catch { sites = []; folders = []; pending = [:]; replacements = []; marked = []; scope = .root; message = "Nie można odczytać Safari: \(error.localizedDescription). Sprawdź uprawnienia systemowe." }
+        } catch {
+            sites = []; folders = []; selected = nil
+            if isSafariPermissionError(error) {
+                reportPermission(error, present: presentPermission)
+            } else {
+                permissionDenied = false; showPermission = false; waitingForPermission = false
+                pending = [:]; replacements = []; marked = []; scope = .root
+                message = "Nie można odczytać Safari: \(error.localizedDescription)"
+            }
+        }
     }
     func prepare() { prepareSites(missing) }
     func prepareMarked() { prepareSites(markedSites) }
     func prepareSites(_ targets: [Site]) {
-        guard !busy, !targets.isEmpty else { return }
+        guard !busy, !permissionDenied, !targets.isEmpty else { return }
         busy = true
         Task {
             var failures = 0
@@ -275,12 +320,13 @@ func fetchIcon(_ host: String) async -> Pending? {
     }
     func choose(_ s: Site) { let panel = NSOpenPanel(); panel.allowedContentTypes = [.image]; panel.canChooseDirectories = false; guard panel.runModal() == .OK, let url = panel.url else { return }; do { let data = try Data(contentsOf: url); guard let (png,_) = safePNG(data) else { throw fail("Nieobsługiwany lub uszkodzony obraz (limit 8 MB).") }; pending[s.host] = Pending(png: png,source:url.lastPathComponent); if s.existing != nil { replacements.insert(s.host) }; message = "Przygotowano własną ikonę. Zmiana wymaga zatwierdzenia." } catch { message = error.localizedDescription } }
     func write() {
+        guard !permissionDenied else { showPermission = true; return }
         let batch = scopedPending
         do {
             let (backup,count) = try store.apply(batch,allowingReplacement:replacements,scope:scope)
             for host in batch.keys { pending.removeValue(forKey:host); replacements.remove(host); marked.remove(host) }
             scan(); message = "Zapisano \(count) ikon. Kopia: \(backup.lastPathComponent). Otwórz Safari i sprawdź efekt."
-        } catch { message = error.localizedDescription }
+        } catch { handleOperationError(error) }
     }
     func selectBackup() { let p = NSOpenPanel(); p.directoryURL = store.backups; p.canChooseDirectories = true; p.canChooseFiles = false; guard p.runModal() == .OK, let u = p.url else {return}; chosenBackup = u; confirmRestore = true }
     func tile(_ data: Data?, fallback: String, size: CGFloat) -> some View { Group { if let data, let image = NSImage(data:data) { Image(nsImage:image).resizable().scaledToFit() } else { ZStack { RoundedRectangle(cornerRadius:size*0.22).fill(.gray.opacity(0.2)); Text(fallback.prefix(1).uppercased()).font(.system(size:size*0.45,weight:.medium)).foregroundStyle(.secondary) } } }.frame(width:size,height:size) }
@@ -295,9 +341,9 @@ func fetchIcon(_ host: String) async -> Pending? {
                 }
                 Spacer(minLength: 12)
                 Button("Skanuj", action: scan).disabled(busy)
-                Button("Pobierz brakujące", action: prepare).disabled(busy || missing.isEmpty)
+                Button("Pobierz brakujące", action: prepare).disabled(busy || permissionDenied || missing.isEmpty)
                 Button("Zastosuj (\(scopedPending.count))") { confirm = true }
-                    .buttonStyle(.borderedProminent).disabled(busy || scopedPending.isEmpty)
+                    .buttonStyle(.borderedProminent).disabled(busy || permissionDenied || scopedPending.isEmpty)
             }
             HStack(spacing: 16) {
                 Text("\(scoped.count) domen")
@@ -390,14 +436,14 @@ func fetchIcon(_ host: String) async -> Pending? {
     private var footer: some View {
         VStack(alignment: .leading, spacing: 7) {
             HStack(spacing: 8) {
-                Button("Przywróć kopię…", action: selectBackup).disabled(busy)
+                Button("Przywróć kopię…", action: selectBackup).disabled(busy || permissionDenied)
                 Button("Otwórz Safari") {
                     if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Safari") {
                         NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration(), completionHandler: nil)
                     }
                 }
                 Button("Ustawienia prywatności") {
-                    if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") { NSWorkspace.shared.open(url) }
+                    if permissionDenied { showPermission = true } else { openPrivacySettings() }
                 }
                 Spacer()
             }
@@ -405,21 +451,59 @@ func fetchIcon(_ host: String) async -> Pending? {
                 .lineLimit(2).help(message).frame(maxWidth: .infinity, alignment: .leading)
         }.fixedSize(horizontal: false, vertical: true)
     }
+    private var permissionSheet: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .center, spacing: 14) {
+                Image(nsImage: NSApplication.shared.applicationIconImage)
+                    .resizable().scaledToFit().frame(width: 64, height: 64)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Wymagany dostęp do dysku").font(.title2.bold())
+                    Text("Safari Icon Fixer nie może odczytać lub zmienić pamięci ikon Safari.")
+                        .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Divider()
+            Text("1. Otwórz Ustawienia systemowe → Prywatność i ochrona → Pełny dostęp do dysku.")
+            Text("2. Włącz Safari Icon Fixer na liście. Jeśli go nie ma, kliknij + i wybierz aplikację z folderu Aplikacje.")
+            Text("3. Wróć tutaj i sprawdź dostęp ponownie. Jeśli macOS poprosi o ponowne uruchomienie aplikacji, zaakceptuj.")
+            Text("To szerokie uprawnienie systemowe. Aplikacja używa go do lokalnego dostępu do zakładek i cache ikon Safari; możesz je później cofnąć.")
+                .font(.caption).foregroundStyle(.secondary)
+            if !permissionHelp.isEmpty {
+                Text(permissionHelp).font(.caption).foregroundStyle(.secondary)
+            }
+            HStack(spacing: 10) {
+                Button("Później") { waitingForPermission = false; showPermission = false }
+                    .keyboardShortcut(.cancelAction)
+                Spacer()
+                Button("Sprawdź ponownie", action: scan)
+                Button("Otwórz ustawienia", action: openPrivacySettings)
+                    .buttonStyle(.borderedProminent)
+            }
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(24)
+        .frame(width: 520)
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             header
             Divider()
-            controls
-            content.layoutPriority(1)
+            controls.disabled(permissionDenied)
+            content.layoutPriority(1).disabled(permissionDenied)
             Divider()
             footer
         }
         .padding(16)
         .frame(minWidth: 780, minHeight: 510)
         .onAppear(perform: scan)
+        .sheet(isPresented: $showPermission, onDismiss: { waitingForPermission = false }) { permissionSheet }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            if waitingForPermission && permissionDenied { runScan(presentPermission: false) }
+            else if waitingForPermission { waitingForPermission = false }
+        }
         .onChange(of: scope) { _ in selected = nil }
         .alert("Zastosować przygotowane ikony?",isPresented:$confirm) { Button("Anuluj",role:.cancel){}; Button("Zapisz",action:write) } message: { Text("Zakres: \(scopeLabel). Zapis: \(scopedPending.count) ikon. Safari współdzieli ikony domen, więc zmiana może być widoczna również w innych folderach i poza Ulubionymi. Zamknij Safari przez ⌘Q. Przed zapisem powstanie kopia cache.") }
-        .alert("Przywrócić cały cache ikon?",isPresented:$confirmRestore) { Button("Anuluj",role:.cancel){}; Button("Przywróć",role:.destructive) { if let saved = chosenBackup { do { let displaced = try store.restore(saved); pending = [:]; replacements = []; marked = []; scan(); message = "Przywrócono kopię. Poprzedni cache: \(displaced.lastPathComponent)." } catch {message = error.localizedDescription} } } } message: { Text("Wymaga zamknięcia Safari. Bieżący folder również zostanie zachowany jako kopia.") }
+        .alert("Przywrócić cały cache ikon?",isPresented:$confirmRestore) { Button("Anuluj",role:.cancel){}; Button("Przywróć",role:.destructive) { if let saved = chosenBackup { do { let displaced = try store.restore(saved); pending = [:]; replacements = []; marked = []; scan(); message = "Przywrócono kopię. Poprzedni cache: \(displaced.lastPathComponent)." } catch {handleOperationError(error)} } } } message: { Text("Wymaga zamknięcia Safari. Bieżący folder również zostanie zachowany jako kopia.") }
     }
 }
 @main struct SafariIconFixerApp: App { var body: some Scene { WindowGroup { MainView() }.defaultSize(width: 940, height: 640).windowResizability(.contentMinSize) } }
