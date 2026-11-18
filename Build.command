@@ -1,9 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 cd "$(dirname "$0")"
-if [[ "$(uname -s)" != Darwin ]]; then echo "Wymagany macOS."; exit 1; fi
+if [[ "$(uname -s)" != Darwin ]]; then echo "macOS is required."; exit 1; fi
 if ! xcode-select -p >/dev/null 2>&1; then
-  echo 'Wymagane Command Line Tools. Zainstaluj je poleceniem xcode-select --install, potem ponów.'
+  echo 'Command Line Tools are required. Run xcode-select --install, then retry.'
   exit 1
 fi
 bash Packaging/FetchSparkle.sh
@@ -16,10 +16,10 @@ cp "$SPARKLE/LICENSE" "$OUT/Contents/Resources/Sparkle-LICENSE.txt"
 cp Info.plist "$OUT/Contents/Info.plist"
 cp Resources/AppIcon.icns "$OUT/Contents/Resources/AppIcon.icns"
 cp Resources/Translations.json "$OUT/Contents/Resources/Translations.json"
-xcrun --sdk macosx swiftc -swift-version 5 -parse-as-library -O -target "$(uname -m)-apple-macos13.0" Localization.swift FavoritesIndex.swift PermissionCheck.swift IconSearchModel.swift IconPixels.swift IconArtwork.swift GoogleImageBrowser.swift IconSearch.swift ReleaseModel.swift AppUpdates.swift Personalization.swift IconCollection.swift BackupInventory.swift BackupManagerView.swift DemoModel.swift DemoArtwork.swift SafariIconFixer.swift -F "$SPARKLE" -framework Sparkle -Xlinker -rpath -Xlinker @executable_path/../Frameworks -o "$OUT/Contents/MacOS/SafariIconFixer"
+xcrun --sdk macosx swiftc -swift-version 5 -parse-as-library -O -target "$(uname -m)-apple-macos13.0" Localization.swift FavoritesIndex.swift PermissionCheck.swift IconSearchModel.swift IconPixels.swift IconArtwork.swift GoogleImageBrowser.swift IconSearch.swift ReleaseModel.swift AppUpdates.swift Personalization.swift IconCollection.swift BackupInventory.swift BackupManagerView.swift DemoModel.swift DemoArtwork.swift CacheRecovery.swift CacheModels.swift IconImageSupport.swift SafariCache.swift SafariIconFixer.swift -F "$SPARKLE" -framework Sparkle -Xlinker -rpath -Xlinker @executable_path/../Frameworks -o "$OUT/Contents/MacOS/SafariIconFixer"
 codesign --verify --deep --strict "$OUT/Contents/Frameworks/Sparkle.framework"
 codesign --force --sign - "$OUT"
 codesign --verify --deep --strict "$OUT"
 otool -L "$OUT/Contents/MacOS/SafariIconFixer" | grep -F '@rpath/Sparkle.framework/'
-echo "Zbudowano: $OUT"
+echo "Built: $OUT"
 if [[ "${CI:-}" != true && "${SIF_NO_FINDER:-}" != 1 ]]; then open -R "$OUT"; fi

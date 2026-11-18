@@ -344,7 +344,11 @@
     "Demo działa lokalnie, bez dostępu do Safari.": "Die Demo läuft lokal und ohne Safari-Zugriff.",
     "Wypróbuj edytor bez dostępu do Safari lub rozpocznij pracę z własnymi Ulubionymi.": "Teste den Editor ohne Safari-Zugriff oder starte mit deinen eigenen Favoriten.",
     "Wypróbuj demo": "Demo ausprobieren",
-    "Otwórz moje Ulubione": "Meine Favoriten öffnen"
+    "Otwórz moje Ulubione": "Meine Favoriten öffnen",
+    "Kopia cache jest uszkodzona lub niekompatybilna.": "Die Cache-Sicherung ist beschädigt oder inkompatibel.",
+    "Wykryto przerwany zapis. Zamknij Safari i przeskanuj ponownie, aby odzyskać cache.": "Ein unterbrochener Schreibvorgang wurde erkannt. Beende Safari und scanne erneut, um den Cache wiederherzustellen.",
+    "Odzyskać cache po przerwanym zapisie?": "Cache nach unterbrochenem Schreibvorgang wiederherstellen?",
+    "Przywróci to stan ikon sprzed operacji. Późniejsze zmiany cache mogą zostać cofnięte. Zakładki pozostaną bez zmian. Bieżący folder cache zostanie zachowany osobno.": "Die Symbole werden auf den Zustand vor dem Vorgang zurückgesetzt. Spätere Cache-Änderungen können rückgängig gemacht werden. Lesezeichen bleiben unverändert. Der aktuelle Cache-Ordner wird separat aufbewahrt."
   },
   "en": {
     "Odzyskaj własną ikonę": "Restore custom icon",
@@ -691,7 +695,11 @@
     "Demo działa lokalnie, bez dostępu do Safari.": "Demo runs locally, without Safari access.",
     "Wypróbuj edytor bez dostępu do Safari lub rozpocznij pracę z własnymi Ulubionymi.": "Try the editor without Safari access, or get started with your own Favorites.",
     "Wypróbuj demo": "Try demo",
-    "Otwórz moje Ulubione": "Open my Favorites"
+    "Otwórz moje Ulubione": "Open my Favorites",
+    "Kopia cache jest uszkodzona lub niekompatybilna.": "The cache backup is corrupt or incompatible.",
+    "Wykryto przerwany zapis. Zamknij Safari i przeskanuj ponownie, aby odzyskać cache.": "An interrupted write was detected. Quit Safari and scan again to recover the cache.",
+    "Odzyskać cache po przerwanym zapisie?": "Recover the cache after an interrupted write?",
+    "Przywróci to stan ikon sprzed operacji. Późniejsze zmiany cache mogą zostać cofnięte. Zakładki pozostaną bez zmian. Bieżący folder cache zostanie zachowany osobno.": "This restores the icons to their pre-operation state. Later cache changes may be reverted. Bookmarks are unchanged. The current cache folder will be preserved separately."
   },
   "es": {
     "Odzyskaj własną ikonę": "Recuperar icono personalizado",
@@ -1038,7 +1046,11 @@
     "Demo działa lokalnie, bez dostępu do Safari.": "La demostración funciona localmente, sin acceso a Safari.",
     "Wypróbuj edytor bez dostępu do Safari lub rozpocznij pracę z własnymi Ulubionymi.": "Prueba el editor sin acceso a Safari o empieza con tus propios favoritos.",
     "Wypróbuj demo": "Probar demostración",
-    "Otwórz moje Ulubione": "Abrir mis favoritos"
+    "Otwórz moje Ulubione": "Abrir mis favoritos",
+    "Kopia cache jest uszkodzona lub niekompatybilna.": "La copia de la caché está dañada o es incompatible.",
+    "Wykryto przerwany zapis. Zamknij Safari i przeskanuj ponownie, aby odzyskać cache.": "Se detectó una escritura interrumpida. Cierra Safari y vuelve a escanear para recuperar la caché.",
+    "Odzyskać cache po przerwanym zapisie?": "¿Recuperar la caché tras una escritura interrumpida?",
+    "Przywróci to stan ikon sprzed operacji. Późniejsze zmiany cache mogą zostać cofnięte. Zakładki pozostaną bez zmian. Bieżący folder cache zostanie zachowany osobno.": "Los iconos volverán a su estado anterior. Los cambios posteriores en la caché pueden revertirse. Los marcadores no cambian. La carpeta actual de la caché se conservará por separado."
   },
   "fr": {
     "Odzyskaj własną ikonę": "Restaurer l’icône personnalisée",
@@ -1385,7 +1397,11 @@
     "Demo działa lokalnie, bez dostępu do Safari.": "La démo fonctionne localement, sans accès à Safari.",
     "Wypróbuj edytor bez dostępu do Safari lub rozpocznij pracę z własnymi Ulubionymi.": "Essaie l’éditeur sans accès à Safari ou commence avec tes propres favoris.",
     "Wypróbuj demo": "Essayer la démo",
-    "Otwórz moje Ulubione": "Ouvrir mes favoris"
+    "Otwórz moje Ulubione": "Ouvrir mes favoris",
+    "Kopia cache jest uszkodzona lub niekompatybilna.": "La sauvegarde du cache est endommagée ou incompatible.",
+    "Wykryto przerwany zapis. Zamknij Safari i przeskanuj ponownie, aby odzyskać cache.": "Une écriture interrompue a été détectée. Quittez Safari et relancez l’analyse pour restaurer le cache.",
+    "Odzyskać cache po przerwanym zapisie?": "Restaurer le cache après une écriture interrompue ?",
+    "Przywróci to stan ikon sprzed operacji. Późniejsze zmiany cache mogą zostać cofnięte. Zakładki pozostaną bez zmian. Bieżący folder cache zostanie zachowany osobno.": "Les icônes seront restaurées à leur état antérieur. Les modifications ultérieures du cache peuvent être annulées. Les signets restent inchangés. Le dossier de cache actuel sera conservé séparément."
   },
   "pl": {
     "Odzyskaj własną ikonę": "Odzyskaj własną ikonę",
@@ -1732,7 +1748,11 @@
     "Demo działa lokalnie, bez dostępu do Safari.": "Demo działa lokalnie, bez dostępu do Safari.",
     "Wypróbuj edytor bez dostępu do Safari lub rozpocznij pracę z własnymi Ulubionymi.": "Wypróbuj edytor bez dostępu do Safari lub rozpocznij pracę z własnymi Ulubionymi.",
     "Wypróbuj demo": "Wypróbuj demo",
-    "Otwórz moje Ulubione": "Otwórz moje Ulubione"
+    "Otwórz moje Ulubione": "Otwórz moje Ulubione",
+    "Kopia cache jest uszkodzona lub niekompatybilna.": "Kopia cache jest uszkodzona lub niekompatybilna.",
+    "Wykryto przerwany zapis. Zamknij Safari i przeskanuj ponownie, aby odzyskać cache.": "Wykryto przerwany zapis. Zamknij Safari i przeskanuj ponownie, aby odzyskać cache.",
+    "Odzyskać cache po przerwanym zapisie?": "Odzyskać cache po przerwanym zapisie?",
+    "Przywróci to stan ikon sprzed operacji. Późniejsze zmiany cache mogą zostać cofnięte. Zakładki pozostaną bez zmian. Bieżący folder cache zostanie zachowany osobno.": "Przywróci to stan ikon sprzed operacji. Późniejsze zmiany cache mogą zostać cofnięte. Zakładki pozostaną bez zmian. Bieżący folder cache zostanie zachowany osobno."
   },
   "uk": {
     "Odzyskaj własną ikonę": "Відновити власну іконку",
@@ -2079,6 +2099,10 @@
     "Demo działa lokalnie, bez dostępu do Safari.": "Демо працює локально, без доступу до Safari.",
     "Wypróbuj edytor bez dostępu do Safari lub rozpocznij pracę z własnymi Ulubionymi.": "Спробуй редактор без доступу до Safari або почни роботу зі своїми улюбленими закладками.",
     "Wypróbuj demo": "Спробувати демо",
-    "Otwórz moje Ulubione": "Відкрити мої улюблені закладки"
+    "Otwórz moje Ulubione": "Відкрити мої улюблені закладки",
+    "Kopia cache jest uszkodzona lub niekompatybilna.": "Резервна копія кешу пошкоджена або несумісна.",
+    "Wykryto przerwany zapis. Zamknij Safari i przeskanuj ponownie, aby odzyskać cache.": "Виявлено перерваний запис. Закрийте Safari й повторіть сканування для відновлення кешу.",
+    "Odzyskać cache po przerwanym zapisie?": "Відновити кеш після перерваного запису?",
+    "Przywróci to stan ikon sprzed operacji. Późniejsze zmiany cache mogą zostać cofnięte. Zakładki pozostaną bez zmian. Bieżący folder cache zostanie zachowany osobno.": "Іконки буде відновлено до стану перед операцією. Пізніші зміни кешу можуть бути скасовані. Закладки не зміняться. Поточну папку кешу буде збережено окремо."
   }
 }

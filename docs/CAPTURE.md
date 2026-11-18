@@ -1,6 +1,6 @@
 # Native promotional captures
 
-On macOS, after building 0.7.0 with `bash Zbuduj.command`, close any previously opened demo window. Run from the repository:
+On macOS, after building 0.7.0 with `bash Build.command`, close any previously opened demo window. Run from the repository:
 
 ```bash
 open -na "$PWD/build/Safari Icon Fixer.app" --args --demo

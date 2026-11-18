@@ -1,4 +1,10 @@
-# Historia wersji
+# Changelog
+
+## 0.7.1 — Reliability Update
+- Durable pre-operation recovery journal and validated snapshots for apply, reset and restore. If interrupted, explicitly recover with Safari closed; subsequent writes and backup deletion are blocked until recovery completes.
+- Reject unknown/ambiguous cache layouts and corrupted or incompatible backups; preserve the protected icon collection for legacy snapshots without metadata.
+- Separate cache, persistence models and image support from the SwiftUI workspace. English script and file names.
+- Add journal, fault-injection and native synthetic cache integration tests; add a discreet optional support link to the website and GitHub.
 
 ## 0.7.0 — Perfection Edition
 - Isolated in-memory demo with fictional Favorites, real Color Studio, simulated repair, before/after and Apply. First-launch choice and sidebar entry, plus `--demo` for presentation.

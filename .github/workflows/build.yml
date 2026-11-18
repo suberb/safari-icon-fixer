@@ -34,13 +34,17 @@ jobs:
           /tmp/sif-collection-tests
           swiftc Localization.swift IconPixels.swift DemoModel.swift Tests/Demo/main.swift -o /tmp/sif-demo-tests
           /tmp/sif-demo-tests
+          swiftc CacheRecovery.swift Tests/Recovery/main.swift -o /tmp/sif-recovery-tests
+          /tmp/sif-recovery-tests
+          swiftc -swift-version 5 Localization.swift FavoritesIndex.swift IconPixels.swift IconArtwork.swift DemoArtwork.swift Personalization.swift CacheRecovery.swift CacheModels.swift IconImageSupport.swift SafariCache.swift Tests/CacheIntegration/main.swift -o /tmp/sif-cache-integration-tests
+          /tmp/sif-cache-integration-tests
           python3 Tests/test-demo-isolation.py
           python3 Tests/test-reset.py
           python3 Tests/test-display.py
           node Tests/test-selection.js
-          bash Testuj-renderowanie.command
+          bash TestRendering.command
       - name: Build application
-        run: bash Zbuduj.command
+        run: bash Build.command
       - name: Package styled DMG
         run: bash Packaging/BuildDMG.sh
       - uses: actions/upload-artifact@v4

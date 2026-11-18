@@ -2,7 +2,7 @@
 # including host names that contain a quote. Does not exercise AppKit or Safari.
 import sqlite3, re
 from pathlib import Path
-s=Path('SafariIconFixer.swift').read_text()
+s=Path('SafariCache.swift').read_text()
 assert 'UPDATE cache_settings SET \\(flag)=0, download_status_flags=0 WHERE host=\\(quote($0));' in s
 for flag in ['icon_is_in_cache','touch_icon_is_in_cache']:
  db=sqlite3.connect(':memory:')

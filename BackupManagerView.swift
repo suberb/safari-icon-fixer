@@ -31,8 +31,12 @@ import AppKit
         guard let id = trashID else { return }
         trashID = nil
         do {
-            let url = try BackupInventory.removable(root, id: id)
-            try FileManager.default.trashItem(at: url, resultingItemURL: nil)
+            let journal = RecoveryJournal(root: root.deletingLastPathComponent())
+            try journal.withLock {
+                guard try journal.read() == nil else { throw fail(l10n("Wykryto przerwany zapis. Zamknij Safari i przeskanuj ponownie, aby odzyskać cache.")) }
+                let url = try BackupInventory.removable(root, id: id)
+                try FileManager.default.trashItem(at: url, resultingItemURL: nil)
+            }
             Task { await refresh() }
         } catch { failure = error.localizedDescription }
     }

@@ -1,8 +1,7 @@
-## Safari Icon Fixer 0.7.0 — Perfection Edition
+## Safari Icon Fixer 0.7.1 — Reliability Update
 
-- Explore a native, isolated Demo Mode using eight fictional Favorites before granting Full Disk Access. Quick Repair, before/after, Color Studio, and simulated Apply are interactive. Edits are kept in memory and discarded when the demo closes.
-- A first-launch choice separates the demo from access to your actual Favorites; the demo remains available in the sidebar. Start independently with `--demo` for a clean presentation.
-- The product website now includes a theme playground and updated explanations of protection, portable collections and demo mode. Website graphics remain illustrative.
-- All features of Color Studio+, Icon Protection and safe manual Apply remain unchanged.
+- Recover interrupted cache writes from a validated pre-operation snapshot after explicit confirmation with Safari closed.
+- Validate SQLite layouts and backup integrity before restoring. Legacy backups without personalization metadata keep the current protected icon collection.
+- Refactored cache engine, English file names, and expanded automated tests. No change to the design or everyday workflow.
 
-Safari must be closed before applying, resetting or restoring real icons. The app is ad hoc signed, not Apple-notarized. Safari's cache is undocumented; compatibility is not guaranteed.
+Safari must be closed before applying, resetting or restoring real icons. Safari’s cache format is undocumented; test fixtures are not proof of support for every Safari release. The app is ad hoc signed, not Apple-notarized.

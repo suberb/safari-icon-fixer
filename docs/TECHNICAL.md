@@ -7,7 +7,7 @@ Naprawa i personalizacja ikon Ulubionych Safari — wybór folderów, wyszukiwan
 ## Instalacja
 
 - [Wydania i pobieranie](https://github.com/suberb/safari-icon-fixer/releases): pobierz instalator `.dmg` dla Apple Silicon, otwórz go i przeciągnij aplikację do Applications (Aplikacje). Kod źródłowy pozostaje dostępny przez GitHub.
-- Wersję źródłową kompiluj na Macu: `bash Zbuduj.command` (Apple Command Line Tools). Przenieś plik .app do Aplikacji.
+- Wersję źródłową kompiluj na Macu: `bash Build.command` (Apple Command Line Tools). Przenieś plik .app do Aplikacji.
 - W razie potrzeby nadaj pełny dostęp do dysku w ustawieniach macOS.
 - Przed zapisem/resetem ikon zamknij Safari. Program tworzy lokalne kopie cache.
 
@@ -19,7 +19,7 @@ Od 0.5.0 aplikacja korzysta ze Sparkle 2.10.1. Menu aplikacji → Sprawdź aktua
 
 ## Rozwijanie
 
-Szczegóły i historia funkcji: [README.txt](../README.txt), [CHANGELOG.md](../CHANGELOG.md). Wersja pochodzi z Info.plist. `bash Testuj-renderowanie.command` uruchamia testy grafiki na Macu. Workflow GitHub Actions kompiluje na Apple Silicon po pushu. Nowa wersja Info.plist na main jest publikowana po przejściu testów; ręcznie można też uruchomić workflow z opcją publish na main. Tagi i PR nie otrzymują klucza prywatnego. Istniejące tagi i wydania nie są nadpisywane. Prywatne repozytoria mogą zużywać płatne minuty Actions; przed publikacją sprawdź limit na koncie.
+Szczegóły i historia funkcji: [README.txt](../README.txt), [CHANGELOG.md](../CHANGELOG.md). Wersja pochodzi z Info.plist. `bash TestRendering.command` uruchamia testy grafiki na Macu. Workflow GitHub Actions kompiluje na Apple Silicon po pushu. Nowa wersja Info.plist na main jest publikowana po przejściu testów; ręcznie można też uruchomić workflow z opcją publish na main. Tagi i PR nie otrzymują klucza prywatnego. Istniejące tagi i wydania nie są nadpisywane. Prywatne repozytoria mogą zużywać płatne minuty Actions; przed publikacją sprawdź limit na koncie.
 
 ## Prywatność
 
@@ -27,7 +27,7 @@ Brak telemetrii. Żądania wysyłane są podczas wyszukiwania/pobierania ikon i 
 
 ## Amethyst 0.6.0
 
-⌘/⇧: zaznaczanie; ⌘⇧A: zaznacz widoczne; ⌘Y: porównanie wybranej ikony; ⌘⌥Z: cofnij ostatni krok kolejki. Podgląd Safari jest symulacją w kolejności biblioteki. Szybka naprawa przygotowuje wykryte brakujące lub nieaktywne ikony, nie wykrywa rzeczywistego wyświetlania. Color Studio pomija złożone tła w operacji zbiorczej. Historia pokazuje unikatowe obrazy z do 40 najnowszych lokalnych kopii; przywrócenie obrazu jest przygotowywane w kolejce, a nie wykonywane bezpośrednio. Przeciąganie obsługuje pliki lokalne i kompatybilne reprezentacje obrazu (nie każde źródło internetowe). Projekt strony w docs/index.html, uruchomienie Pages po publikacji przez Ustaw-strone-GitHub.command.
+⌘/⇧: zaznaczanie; ⌘⇧A: zaznacz widoczne; ⌘Y: porównanie wybranej ikony; ⌘⌥Z: cofnij ostatni krok kolejki. Podgląd Safari jest symulacją w kolejności biblioteki. Szybka naprawa przygotowuje wykryte brakujące lub nieaktywne ikony, nie wykrywa rzeczywistego wyświetlania. Color Studio pomija złożone tła w operacji zbiorczej. Historia pokazuje unikatowe obrazy z do 40 najnowszych lokalnych kopii; przywrócenie obrazu jest przygotowywane w kolejce, a nie wykonywane bezpośrednio. Przeciąganie obsługuje pliki lokalne i kompatybilne reprezentacje obrazu (nie każde źródło internetowe). Projekt strony w docs/index.html, uruchomienie Pages po publikacji przez ConfigureGitHubPages.command.
 
 ### Color Studio+ i kolekcje ikon (0.6.6)
 Inteligentne tło porównuje jasność nieprzezroczystych pikseli wydzielonego znaku z jasnymi i ciemnymi tłami; to heurystyka, nie gwarancja kontrastu dla każdego fragmentu. Soft Brand pozostawia osobny mechanizm rozjaśniania o 30–50%. Motyw można przygotować dla zaznaczonych lub widocznych ikon (złożone tła są pomijane); zmiany trafiają do szkicu.
@@ -39,3 +39,15 @@ Kolekcja JSON w wersji formatu 1 zawiera tylko domenę, PNG (normalizowane przy 
 `WorkspaceRoot` selects an isolated `DemoWorkspace` before constructing `MainView` when launched with `--demo` or before the user chooses to open real Favorites. `DemoSession` holds sample state only in memory, while the shared `InlineIconStudio` supplies the real image renderer. No Safari access, cache operations, file imports, web searches or actual writes are available in this workspace. In an already opened live session, the demo sheet does not operate on the live library. Closing it discards demo edits.
 
 For native promotional captures see [CAPTURE.md](CAPTURE.md). Website illustrations are not native screenshots.
+
+## Recovery and compatibility (0.7.1)
+
+Before apply, reset or restore, the cache engine creates a complete snapshot, checks its SQLite layout and `quick_check`, verifies protected icon digests, synchronizes files and records the snapshot UUID in `RecoveryJournal.json`. An exclusive process lock prevents concurrent application transactions. The marker is removed only after the resulting cache and personalization files are synchronized. This is a crash-recovery protocol, not a hardware power-loss guarantee. It does not lock out Safari itself.
+
+If a marker remains, rescanning prompts for explicit recovery with Safari closed. The pre-operation snapshot is kept; any displaced cache is preserved under `RecoveryArtifacts`. Other cache writes and backup deletion are blocked while recovery is pending. Recovery may revert later cache changes, not bookmarks. A second interruption leaves the marker available for another attempt. Corrupt journals, incompatible readable schemas and invalid snapshots fail closed; do not remove the marker or backups merely to bypass an error.
+
+The recognized layouts use exactly one of `icon_is_in_cache` or `touch_icon_is_in_cache`, plus `host` and `download_status_flags`, with or without `transparency_analysis_result`. Normal full restore requires matching SQLite schema and user version as well as integrity checks. Older snapshots without personalization metadata retain the current protected collection; newer snapshots restore matching metadata. Unknown or ambiguous layouts are blocked, not guessed.
+
+CI tests the four synthetic layouts, malformed schemas, legacy and modern snapshots, interrupted operations, and repeated recovery. `Tests/CacheIntegration/main.swift` exercises the production cache engine against temporary synthetic directories only, including abrupt child process exit. A successful fixture run does not establish compatibility with particular installed Safari releases. Record actual macOS and Safari versions and use a disposable macOS user profile for manual apply/reset/restore testing before declaring broader compatibility.
+
+The source is organized into `SafariCache.swift`, `CacheRecovery.swift`, `CacheModels.swift`, `IconImageSupport.swift`, and the existing SwiftUI workspace. Build scripts now use English names.

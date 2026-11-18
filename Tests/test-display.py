@@ -16,7 +16,7 @@ with tempfile.TemporaryDirectory() as temp:
             db.execute(f'UPDATE cache_settings SET {flag}=1, download_status_flags=1{assignment} WHERE host=?',(host,))
         assert list(db.execute('SELECT * FROM cache_settings ORDER BY host'))==[('example.com',1,1,3,'b'),('google.com',1,1,1,'a'),("o'neil.com",1,1,0,'c'),('other.test',1,1,3,'d')]
         db.close()
-source=Path('SafariIconFixer.swift').read_text()
+source=Path('SafariCache.swift').read_text()
 assert 'iconDisplayAssignment(pending[host]?.display)' in source
 assert 'if !supportsDisplay && pending.values.contains' in source
 assert 'if byHost[host]?.existing != item.png' in source

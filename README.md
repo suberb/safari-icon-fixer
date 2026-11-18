@@ -59,6 +59,8 @@ No subscriptions or telemetry. Bookmarks, icon caches, staged drafts and backups
 
 **Ana × ChatGPT**
 
+[Buy me a coffee](https://buymeacoffee.com/hempbiscuit)
+
 </div>
 
 *Marketing illustrations are conceptual, not live screenshots. All example bookmarks and folders are illustrative, not user data.*
