@@ -284,37 +284,142 @@ func fetchIcon(_ host: String) async -> Pending? {
     }
     func selectBackup() { let p = NSOpenPanel(); p.directoryURL = store.backups; p.canChooseDirectories = true; p.canChooseFiles = false; guard p.runModal() == .OK, let u = p.url else {return}; chosenBackup = u; confirmRestore = true }
     func tile(_ data: Data?, fallback: String, size: CGFloat) -> some View { Group { if let data, let image = NSImage(data:data) { Image(nsImage:image).resizable().scaledToFit() } else { ZStack { RoundedRectangle(cornerRadius:size*0.22).fill(.gray.opacity(0.2)); Text(fallback.prefix(1).uppercased()).font(.system(size:size*0.45,weight:.medium)).foregroundStyle(.secondary) } } }.frame(width:size,height:size) }
-    var body: some View {
-        VStack(alignment:.leading,spacing:16) {
-            HStack { Image(systemName:"safari").font(.system(size:36)).foregroundStyle(.blue); VStack(alignment:.leading) { Text("Safari Icon Fixer").font(.title.bold()); Text("Ulubione · lokalna naprawa ikon").foregroundStyle(.secondary) }; Spacer(); Button("Skanuj",action:scan).disabled(busy); Button("Pobierz brakujące",action:prepare).disabled(busy || missing.isEmpty); Button("Zastosuj (\(scopedPending.count))") {confirm = true}.buttonStyle(.borderedProminent).disabled(busy || scopedPending.isEmpty) }
-            HStack(spacing:20) { Text("\(scoped.count) domen"); Text("\(scoped.filter{$0.existing != nil}.count) w cache"); Text("\(scoped.filter{$0.needsRepair}.count) do sprawdzenia"); Spacer(); if busy { ProgressView().controlSize(.small) } }.font(.callout).foregroundStyle(.secondary)
-            HStack {
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 10) {
+                Image(nsImage: NSApplication.shared.applicationIconImage)
+                    .resizable().scaledToFit().frame(width: 38, height: 38)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Safari Icon Fixer").font(.title2.bold())
+                    Text("Ulubione · lokalna naprawa ikon").font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 12)
+                Button("Skanuj", action: scan).disabled(busy)
+                Button("Pobierz brakujące", action: prepare).disabled(busy || missing.isEmpty)
+                Button("Zastosuj (\(scopedPending.count))") { confirm = true }
+                    .buttonStyle(.borderedProminent).disabled(busy || scopedPending.isEmpty)
+            }
+            HStack(spacing: 16) {
+                Text("\(scoped.count) domen")
+                Text("\(scoped.filter { $0.existing != nil }.count) w cache")
+                Text("\(scoped.filter { $0.needsRepair }.count) do sprawdzenia")
+                Spacer()
+                if busy { ProgressView().controlSize(.small) }
+            }.font(.callout).foregroundStyle(.secondary)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+    }
+    private var controls: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 12) {
                 Picker("Zakres", selection: $scope) {
                     Text("Bez folderu").tag(FavoriteScope.root)
                     Text("Wszystkie Ulubione").tag(FavoriteScope.all)
                     ForEach(folders) { folder in Text(folder.label).tag(folder.scope) }
-                }.frame(maxWidth:480).disabled(busy)
-                Spacer()
-                Text("\(scopedPending.count) gotowych w zakresie · \(pending.count) łącznie").font(.caption).foregroundStyle(.secondary)
+                }.frame(maxWidth: 420).disabled(busy)
+                Spacer(minLength: 4)
+                Text("\(scopedPending.count) gotowych · \(pending.count) łącznie")
+                    .font(.caption).foregroundStyle(.secondary)
             }
-            Text("Ikona w cache nie oznacza, że Safari ją wyświetla. Zaznacz strony, na których widzisz litery, i wymuś naprawę.").font(.caption).foregroundStyle(.secondary)
-            HStack {
+            Text("Ikona w cache nie musi być widoczna w Safari. Zaznacz strony z literami i wymuś naprawę.")
+                .font(.caption).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 8) {
                 Button("Zaznacz widoczne") { marked.formUnion(shown.filter { $0.registered }.map { $0.host }) }.disabled(busy)
                 Button("Odznacz") { marked.subtract(scoped.map { $0.host }) }.disabled(busy)
-                Spacer()
+                Spacer(minLength: 4)
                 Button("Napraw zaznaczone (\(markedSites.count))", action: prepareMarked).disabled(busy || markedSites.isEmpty)
             }
-            HStack { Picker("",selection:$filter) { ForEach(["Wszystkie","Brakujące","Gotowe"],id:\.self){Text($0)} }.pickerStyle(.segmented).frame(maxWidth:320); Spacer(); TextField("Szukaj strony…",text:$search).textFieldStyle(.roundedBorder).frame(width:220) }
-            HStack(spacing:18) {
-                List(shown,selection:$selected) { s in siteRow(s).tag(s.host) }.frame(minWidth:390)
-                Divider()
-                VStack(alignment:.leading,spacing:16) { if let s = site { Text(s.title).font(.title2.bold()); Text(s.host).foregroundStyle(.secondary); Text(Array(Set(s.locations.map { $0.folderTitles.isEmpty ? "Bez folderu" : $0.folderTitles.joined(separator: " / ") })).sorted().joined(separator: " · ")).font(.caption).foregroundStyle(.secondary).lineLimit(3); if s.locations.contains(where: { !scope.includes($0.folder) }) { Text("Wspólna ikona także poza tym zakresem.").font(.caption).foregroundStyle(.orange) }; HStack(spacing:20) { VStack { tile(s.existing,fallback:s.title,size:82); Text("W cache") }; Image(systemName:"arrow.right").foregroundStyle(.secondary); VStack { tile(pending[s.host]?.png ?? s.existing,fallback:s.title,size:82); Text("Po zmianie") } }; Text(s.status).font(.callout); Text(cacheDetails(s)).font(.caption).foregroundStyle(.secondary); Button("Wymuś naprawę tej ikony") { prepareSites([s]) }.disabled(busy || !s.registered); if let p = pending[s.host] { Text(p.source).font(.caption).lineLimit(2); Button("Odrzuć zmianę") { pending.removeValue(forKey:s.host); replacements.remove(s.host) }.disabled(busy) }; Button("Wybierz własną ikonę…") { choose(s) }.disabled(busy || !s.registered); if !s.registered { Text("Otwórz stronę w Safari i przeskanuj ponownie. Bez jednoznacznego rekordu nie zapisujemy.").font(.caption).foregroundStyle(.secondary) } } else { Text("Wybierz stronę").font(.headline); Text("Podgląd i własna grafika").foregroundStyle(.secondary) }; Spacer() }.frame(width:260,alignment:.leading).padding(10)
-            }.frame(minHeight:340)
-            Divider(); HStack { Button("Przywróć kopię…",action:selectBackup).disabled(busy); Button("Otwórz Safari") { if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Safari") { NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration(), completionHandler: nil) } }; Button("Ustawienia prywatności") { if let url = URL(string:"x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") { NSWorkspace.shared.open(url) } }; Spacer() }
-            Text(message).font(.caption).foregroundStyle(.secondary).textSelection(.enabled).frame(maxWidth:.infinity,alignment:.leading)
-        }.padding(22).frame(minWidth:850,minHeight:620).onAppear(perform:scan).onChange(of:scope) { _ in selected = nil }
+            HStack(spacing: 12) {
+                Picker("", selection: $filter) {
+                    ForEach(["Wszystkie", "Brakujące", "Gotowe"], id: \.self) { Text($0) }
+                }.labelsHidden().pickerStyle(.segmented).frame(maxWidth: 320)
+                Spacer(minLength: 4)
+                TextField("Szukaj strony…", text: $search).textFieldStyle(.roundedBorder).frame(maxWidth: 220)
+            }
+        }.fixedSize(horizontal: false, vertical: true)
+    }
+    @ViewBuilder private func detail(_ s: Site) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(s.title).font(.title2.bold()).fixedSize(horizontal: false, vertical: true)
+            Text(s.host).font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
+            Text(Array(Set(s.locations.map { $0.folderTitles.isEmpty ? "Bez folderu" : $0.folderTitles.joined(separator: " / ") })).sorted().joined(separator: " · "))
+                .font(.caption).foregroundStyle(.secondary).lineLimit(3)
+            if s.locations.contains(where: { !scope.includes($0.folder) }) {
+                Text("Wspólna ikona także poza tym zakresem.")
+                    .font(.caption).foregroundStyle(.orange)
+            }
+            HStack(spacing: 12) {
+                VStack(spacing: 4) { tile(s.existing, fallback: s.title, size: 68); Text("W cache").font(.caption) }
+                Image(systemName: "arrow.right").foregroundStyle(.secondary)
+                VStack(spacing: 4) { tile(pending[s.host]?.png ?? s.existing, fallback: s.title, size: 68); Text("Po zmianie").font(.caption) }
+            }.frame(maxWidth: .infinity).padding(.vertical, 5)
+            Text(s.status).font(.callout)
+            Text(cacheDetails(s)).font(.caption).foregroundStyle(.secondary)
+            Button("Wymuś naprawę tej ikony") { prepareSites([s]) }.disabled(busy || !s.registered)
+            Button("Wybierz własną ikonę…") { choose(s) }.disabled(busy || !s.registered)
+            if let p = pending[s.host] {
+                Text(p.source).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                Button("Odrzuć zmianę") { pending.removeValue(forKey: s.host); replacements.remove(s.host) }.disabled(busy)
+            }
+            if !s.registered {
+                Text("Otwórz stronę w Safari i przeskanuj ponownie. Bez jednoznacznego rekordu nie zapisujemy.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }.frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+    private var content: some View {
+        HStack(alignment: .top, spacing: 12) {
+            List(shown, selection: $selected) { s in siteRow(s).tag(s.host) }
+                .frame(minWidth: 330, maxWidth: .infinity, maxHeight: .infinity)
+            Divider()
+            ScrollView {
+                if let s = site {
+                    detail(s)
+                } else {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Wybierz stronę").font(.headline)
+                        Text("Podgląd i własna grafika").foregroundStyle(.secondary)
+                    }.frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .padding(.trailing, 5)
+            .frame(minWidth: 225, idealWidth: 270, maxWidth: 290, maxHeight: .infinity, alignment: .topLeading)
+        }.frame(minHeight: 110, maxHeight: .infinity)
+    }
+    private var footer: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 8) {
+                Button("Przywróć kopię…", action: selectBackup).disabled(busy)
+                Button("Otwórz Safari") {
+                    if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Safari") {
+                        NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration(), completionHandler: nil)
+                    }
+                }
+                Button("Ustawienia prywatności") {
+                    if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") { NSWorkspace.shared.open(url) }
+                }
+                Spacer()
+            }
+            Text(message).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+                .lineLimit(2).help(message).frame(maxWidth: .infinity, alignment: .leading)
+        }.fixedSize(horizontal: false, vertical: true)
+    }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            header
+            Divider()
+            controls
+            content.layoutPriority(1)
+            Divider()
+            footer
+        }
+        .padding(16)
+        .frame(minWidth: 780, minHeight: 510)
+        .onAppear(perform: scan)
+        .onChange(of: scope) { _ in selected = nil }
         .alert("Zastosować przygotowane ikony?",isPresented:$confirm) { Button("Anuluj",role:.cancel){}; Button("Zapisz",action:write) } message: { Text("Zakres: \(scopeLabel). Zapis: \(scopedPending.count) ikon. Safari współdzieli ikony domen, więc zmiana może być widoczna również w innych folderach i poza Ulubionymi. Zamknij Safari przez ⌘Q. Przed zapisem powstanie kopia cache.") }
         .alert("Przywrócić cały cache ikon?",isPresented:$confirmRestore) { Button("Anuluj",role:.cancel){}; Button("Przywróć",role:.destructive) { if let saved = chosenBackup { do { let displaced = try store.restore(saved); pending = [:]; replacements = []; marked = []; scan(); message = "Przywrócono kopię. Poprzedni cache: \(displaced.lastPathComponent)." } catch {message = error.localizedDescription} } } } message: { Text("Wymaga zamknięcia Safari. Bieżący folder również zostanie zachowany jako kopia.") }
     }
 }
-@main struct SafariIconFixerApp: App { var body: some Scene { WindowGroup { MainView() }.defaultSize(width:940,height:650) } }
+@main struct SafariIconFixerApp: App { var body: some Scene { WindowGroup { MainView() }.defaultSize(width: 940, height: 640).windowResizability(.contentMinSize) } }
