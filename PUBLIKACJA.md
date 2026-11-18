@@ -9,6 +9,6 @@ Repozytorium docelowe: `suberb/safari-icon-fixer`. Przed publikacją wybierz wid
 
 Plik history.bundle zawiera rzeczywiste zachowane snapshoty od 0.1 do 0.3.2, z odtworzonymi commitami i tagami (nie jest to pierwotna historia Git). Skrypt nie wymusza push, nie zmienia widoczności istniejącego repozytorium, nie zapisuje tokenów. Repozytorium nie zawiera zakładek, cache, ustawień ani zrzutów ekranu. Przed upublicznieniem możesz obejrzeć kod.
 
-## Kolejne wydania
+## Kolejne wydania (od 0.3.3)
 
-W repozytorium zwiększ wersję i numer kompilacji w Info.plist, zaktualizuj RELEASE.md i CHANGELOG.md, uruchom testy, utwórz commit i tag `vX.Y.Z` zgodny z Info.plist, a następnie wypchnij commit oraz tag osobno. GitHub Actions opublikuje wydanie tylko po sukcesie. Nie nadpisuj istniejącego tagu. Dla dystrybucji publicznej zalecany jest później Developer ID i notaryzacja Apple; nie zostały skonfigurowane.
+Zwiększ wersję i numer kompilacji w Info.plist, zaktualizuj RELEASE.md i CHANGELOG.md, uruchom testy i wypchnij commit na main. GitHub Actions po udanych testach zbuduje DMG dla Apple Silicon, zweryfikuje obraz i opublikuje wydanie z SHA256SUMS. Ręcznie można też wysłać tag `vX.Y.Z` zgodny z Info.plist lub uruchomić workflow z opcją publish na main. Istniejące tagi i wydania nie są nadpisywane. GitHub dodaje własne archiwa źródłowe automatycznie. Dla dystrybucji publicznej zalecany jest Developer ID i notaryzacja Apple; nie zostały skonfigurowane.

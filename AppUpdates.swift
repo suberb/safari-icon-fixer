@@ -9,8 +9,8 @@ extension Notification.Name {
 }
 
 enum AppReleaseInfo {
-    static var version: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.3.2" }
-    static var build: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "14" }
+    static var version: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.3.3" }
+    static var build: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "15" }
     static let repository = "suberb/safari-icon-fixer"
     static let repositoryURL = URL(string: "https://github.com/\(repository)")!
     static let releasesURL = repositoryURL.appendingPathComponent("releases")
@@ -106,7 +106,7 @@ enum AppReleaseInfo {
                         Link("Informacje o wydaniu", destination: AppReleaseInfo.releaseURL(release))
                         Spacer()
                         if let url = AppReleaseInfo.downloadURL(release) {
-                            Button("Pobierz aktualizację") { NSWorkspace.shared.open(url) }.buttonStyle(.borderedProminent)
+                            Button(url.pathExtension == "dmg" ? "Pobierz DMG" : "Pobierz aktualizację") { NSWorkspace.shared.open(url) }.buttonStyle(.borderedProminent)
                         } else {
                             Link("Pobierz z GitHub", destination: AppReleaseInfo.releaseURL(release))
                         }

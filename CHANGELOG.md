@@ -1,5 +1,8 @@
 # Historia wersji
 
+## 0.3.3
+Instalator DMG dla Apple Silicon, instalacja przez przeciągnięcie do Applications, aktualizator preferuje DMG (obsługuje starsze ZIP), publikacja nowych wersji z main po testach.
+
 ## 0.3.2
 O aplikacji (Ana × ChatGPT), sprawdzanie GitHub Releases, wersjonowanie Git, test aktualizatora, GitHub Actions i paczki do pobrania.
 

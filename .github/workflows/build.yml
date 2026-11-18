@@ -1,6 +1,11 @@
 name: Build macOS
 on:
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish current version after successful tests
+        type: boolean
+        default: false
   pull_request:
   push:
     branches: [main]
@@ -24,19 +29,32 @@ jobs:
           bash Testuj-renderowanie.command
       - name: Build application
         run: bash Zbuduj.command
-      - name: Package
+      - name: Package DMG
         run: |
+          set -euo pipefail
           VERSION=$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' Info.plist)
+          test "$(uname -m)" = arm64
           mkdir -p dist
-          ditto -c -k --sequesterRsrc --keepParent 'build/Safari Icon Fixer.app' "dist/SafariIconFixer-$VERSION-macOS-$(uname -m).zip"
+          STAGE=$(mktemp -d)
+          trap 'rm -rf "$STAGE"' EXIT
+          ditto 'build/Safari Icon Fixer.app' "$STAGE/Safari Icon Fixer.app"
+          codesign --verify --strict --verbose=2 "$STAGE/Safari Icon Fixer.app"
+          ln -s /Applications "$STAGE/Applications"
+          DMG="$PWD/dist/SafariIconFixer-$VERSION-macOS-arm64.dmg"
+          hdiutil create -volname 'Safari Icon Fixer' -srcfolder "$STAGE" -format UDZO -ov "$DMG"
+          hdiutil verify "$DMG"
       - uses: actions/upload-artifact@v4
         with:
           name: SafariIconFixer-macOS
-          path: dist/*.zip
+          path: dist/*.dmg
+          if-no-files-found: error
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish)))
     needs: build
     runs-on: ubuntu-latest
+    concurrency:
+      group: safari-icon-fixer-publish
+      cancel-in-progress: false
     permissions:
       contents: write
     steps:
@@ -49,8 +67,26 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           VERSION=$(python3 -c 'import plistlib; print(plistlib.load(open("Info.plist", "rb"))["CFBundleShortVersionString"])')
-          test "$GITHUB_REF_NAME" = "v$VERSION"
-          git archive --format=zip --prefix="SafariIconFixer-$VERSION/" -o "dist/SafariIconFixer-$VERSION-source.zip" HEAD
-          (cd dist && sha256sum *.zip > SHA256SUMS.txt)
-          gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --title "Safari Icon Fixer $VERSION" --notes-file RELEASE.md
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          TAG="v$VERSION"
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then test "$GITHUB_REF_NAME" = "$TAG"; fi
+          REMOTE=$(git ls-remote --tags origin "refs/tags/$TAG" "refs/tags/$TAG^{}")
+          TARGET=$(printf '%s\n' "$REMOTE" | awk -v ref="refs/tags/$TAG^{}" '$2 == ref {print $1}')
+          if [[ -z "$TARGET" ]]; then TARGET=$(printf '%s\n' "$REMOTE" | awk 'NF {print $1; exit}'); fi
+          if [[ -n "$TARGET" && "$TARGET" != "$GITHUB_SHA" ]]; then
+            if [[ "$GITHUB_REF" == refs/tags/* ]]; then exit 1; fi
+            echo "Version already points to another commit; bump Info.plist to release."
+            exit 0
+          fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release already exists; not replacing assets."
+            exit 0
+          fi
+          (cd dist && sha256sum *.dmg > SHA256SUMS.txt)
+          if [[ -n "$TARGET" ]]; then
+            gh release create "$TAG" dist/* --verify-tag --title "Safari Icon Fixer $VERSION" --notes-file RELEASE.md
+          else
+            gh release create "$TAG" dist/* --target "$GITHUB_SHA" --title "Safari Icon Fixer $VERSION" --notes-file RELEASE.md
+          fi

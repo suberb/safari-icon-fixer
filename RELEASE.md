@@ -1,9 +1,8 @@
-## Safari Icon Fixer 0.3.2
+## Safari Icon Fixer 0.3.3
 
-- Okno „O aplikacji” z podpisem Ana × ChatGPT.
-- Sprawdzanie nowych stabilnych wersji przez GitHub Releases (automatycznie raz dziennie przy aktywności aplikacji i ręcznie).
-- Informacje o wydaniu oraz pobieranie odpowiedniej paczki w przeglądarce; bez cichej instalacji.
-- Historia kodu oraz automatyczna kompilacja Apple Silicon i publikacja po pozytywnych testach.
-- Wszystkie dotychczasowe funkcje i fioletowa ikona bez zmian.
+- Instalator DMG dla Apple Silicon: otwórz obraz i przeciągnij Safari Icon Fixer do Applications.
+- Aktualizator preferuje DMG; zachowano zgodność ze starszymi wydaniami ZIP.
+- Publikacja nowych wersji z main po pozytywnych testach i weryfikacji obrazu dysku.
+- Dotychczasowe funkcje i ikona aplikacji bez zmian.
 
-Paczka .app ma podpis ad hoc, nie Developer ID; nie jest notaryzowana przez Apple. macOS może wymagać ponownego przyznania pełnego dostępu do dysku po aktualizacji. W razie problemu skompiluj źródła lokalnie przez Zbuduj.command. Nie wyłączaj zabezpieczeń macOS.
+Aplikacja jest podpisana ad hoc, nie Developer ID, i nie jest notaryzowana przez Apple. macOS może wymagać ponownego przyznania pełnego dostępu do dysku po aktualizacji. Jeśli system nie pozwala uruchomić pobranej aplikacji, skompiluj ją lokalnie z kodu źródłowego. Nie wyłączaj zabezpieczeń macOS.

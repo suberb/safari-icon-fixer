@@ -27,7 +27,12 @@ struct GitHubRelease: Decodable {
     enum CodingKeys: String, CodingKey { case tagName = "tag_name", draft, prerelease, body, assets }
     var version: ReleaseVersion? { guard !draft, !prerelease else { return nil }; return ReleaseVersion(tagName) }
     func macAsset(architecture: String) -> String? {
-        let name = "SafariIconFixer-\(version?.string ?? "")-macOS-\(architecture).zip"
-        return assets.contains(where: { $0.name == name }) ? name : nil
+        guard let version, ["arm64", "x86_64"].contains(architecture) else { return nil }
+        let base = "SafariIconFixer-\(version.string)-macOS-\(architecture)"
+        for ext in ["dmg", "zip"] {
+            let name = "\(base).\(ext)"
+            if assets.contains(where: { $0.name == name }) { return name }
+        }
+        return nil
     }
 }
