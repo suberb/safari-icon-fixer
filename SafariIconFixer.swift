@@ -729,7 +729,7 @@ func fetchIcon(_ host: String) async -> Pending? {
         .frame(minWidth: 900, minHeight: 510)
         .tint(purple)
         .onAppear(perform: scan)
-        .task { await updates.checkIfDue() }
+        .task { await updates.checkAtLaunch() }
         .sheet(isPresented: $showAbout) { AppAboutView(updates: updates) }
         .onReceive(NotificationCenter.default.publisher(for: .sifAbout)) { _ in showAbout = true }
         .onReceive(NotificationCenter.default.publisher(for: .sifUpdate)) { _ in

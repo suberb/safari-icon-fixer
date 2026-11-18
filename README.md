@@ -25,7 +25,7 @@ macOS · Apple Silicon · Free · No account required
 - **Personalize** with images from the web, custom backgrounds, logo margins, or colors taken from an icon.
 - **Organize** by Favorites folder or work on individual sites.
 - **Undo** your changes with reset and local backups.
-- **Stay current** with automatic update checks through GitHub Releases.
+- **Stay current** with update checks at each launch through GitHub Releases.
 
 ## Six languages. One app.
 

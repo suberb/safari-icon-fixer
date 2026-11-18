@@ -32,20 +32,8 @@ jobs:
           bash Testuj-renderowanie.command
       - name: Build application
         run: bash Zbuduj.command
-      - name: Package DMG
-        run: |
-          set -euo pipefail
-          VERSION=$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' Info.plist)
-          test "$(uname -m)" = arm64
-          mkdir -p dist
-          STAGE=$(mktemp -d)
-          trap 'rm -rf "$STAGE"' EXIT
-          ditto 'build/Safari Icon Fixer.app' "$STAGE/Safari Icon Fixer.app"
-          codesign --verify --strict --verbose=2 "$STAGE/Safari Icon Fixer.app"
-          ln -s /Applications "$STAGE/Applications"
-          DMG="$PWD/dist/SafariIconFixer-$VERSION-macOS-arm64.dmg"
-          hdiutil create -volname 'Safari Icon Fixer' -srcfolder "$STAGE" -format UDZO -ov "$DMG"
-          hdiutil verify "$DMG"
+      - name: Package styled DMG
+        run: bash Packaging/BuildDMG.sh
       - uses: actions/upload-artifact@v4
         with:
           name: SafariIconFixer-macOS

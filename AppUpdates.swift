@@ -9,8 +9,8 @@ extension Notification.Name {
 }
 
 enum AppReleaseInfo {
-    static var version: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.4.0" }
-    static var build: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "16" }
+    static var version: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.4.1" }
+    static var build: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "17" }
     static let repository = "suberb/safari-icon-fixer"
     static let repositoryURL = URL(string: "https://github.com/\(repository)")!
     static let releasesURL = repositoryURL.appendingPathComponent("releases")
@@ -39,7 +39,14 @@ enum AppReleaseInfo {
         didSet { UserDefaults.standard.set(automatic, forKey: "sif.updates.auto") }
     }
     private let lastAttemptKey = "sif.updates.lastAttempt"
+    private var launchCheckStarted = false
+    func checkAtLaunch() async {
+        guard automatic, !launchCheckStarted else { return }
+        launchCheckStarted = true
+        await check()
+    }
     func checkIfDue() async {
+        guard launchCheckStarted else { return }
         guard automatic, Date().timeIntervalSince1970 - UserDefaults.standard.double(forKey: lastAttemptKey) >= 86400 else { return }
         await check()
     }
@@ -113,7 +120,7 @@ enum AppReleaseInfo {
                     }
                 }
                 Toggle(l10n("Automatycznie sprawdzaj aktualizacje"), isOn: $updates.automatic)
-                Text(l10n("Sprawdzanie raz dziennie podczas uruchomienia lub powrotu do aplikacji. GitHub otrzymuje tylko zwykłe zapytanie o wydanie, nie zakładki ani ikony. Instalujesz aktualizację samodzielnie."))
+                Text(l10n("Sprawdzanie przy każdym uruchomieniu i raz dziennie podczas aktywności. GitHub otrzymuje tylko zapytanie o wydanie, nie zakładki ani ikony. Instalujesz aktualizację samodzielnie."))
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }.padding(14).background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
             HStack {

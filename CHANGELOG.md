@@ -1,5 +1,8 @@
 # Historia wersji
 
+## 0.4.1
+Styled purple DMG with real Applications shortcut, installation instructions and launch-time update checks (manual installation).
+
 ## 0.4.0
 Sześć języków interfejsu (EN/DE/FR/UK/PL/ES), wybór automatyczny i ręczny, testy lokalizacji, nowy README produktu i grafiki poglądowe.
 
