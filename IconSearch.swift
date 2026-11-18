@@ -13,46 +13,6 @@ struct IconCandidate: Identifiable {
     var transparent: Bool { hasTransparentPixels(png) }
 }
 
-private func decodedIcon(_ data: Data) -> CGImage? {
-    guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
-    return CGImageSourceCreateImageAtIndex(source, 0, nil)
-}
-
-func hasTransparentPixels(_ data: Data) -> Bool {
-    guard let image = decodedIcon(data) else { return false }
-    let side = 64
-    var buffer = [UInt8](repeating: 0, count: side * side * 4)
-    return buffer.withUnsafeMutableBytes { bytes -> Bool in
-        guard let ctx = CGContext(data: bytes.baseAddress, width: side, height: side, bitsPerComponent: 8, bytesPerRow: side * 4, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue) else { return false }
-        ctx.draw(image, in: CGRect(x: 0, y: 0, width: side, height: side))
-        for i in stride(from: 3, to: bytes.count, by: 4) { if bytes[i] < 240 { return true } }
-        return false
-    }
-}
-
-enum IconBackground: String, CaseIterable, Identifiable {
-    case original = "Oryginalne", white = "Białe", custom = "Własny kolor"
-    var id: String { rawValue }
-}
-
-func composeIcon(_ png: Data, background: IconBackground, color: NSColor, inset: Double) -> Data? {
-    if background == .original && inset == 0 { return png }
-    guard let image = decodedIcon(png), let ctx = CGContext(data: nil, width: 256, height: 256, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
-    if background != .original {
-        let fill = background == .white ? NSColor.white : color
-        ctx.setFillColor((fill.usingColorSpace(.deviceRGB) ?? NSColor.white).withAlphaComponent(1).cgColor)
-        ctx.fill(CGRect(x: 0, y: 0, width: 256, height: 256))
-    }
-    let pad = CGFloat(max(0, min(0.25, inset))) * 256
-    ctx.interpolationQuality = .high
-    ctx.draw(image, in: CGRect(x: pad, y: pad, width: 256 - 2 * pad, height: 256 - 2 * pad))
-    guard let rendered = ctx.makeImage() else { return nil }
-    let output = NSMutableData()
-    guard let dest = CGImageDestinationCreateWithData(output as CFMutableData, UTType.png.identifier as CFString, 1, nil) else { return nil }
-    CGImageDestinationAddImage(dest, rendered, nil)
-    return CGImageDestinationFinalize(dest) ? output as Data : nil
-}
-
 private final class CommonsPolicy: NSObject, URLSessionTaskDelegate {
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
         completionHandler(request.url.map(allowedCommonsURL) == true ? request : nil)
@@ -66,7 +26,7 @@ func searchCommons(_ text: String) async throws -> [IconCandidate] {
     config.timeoutIntervalForResource = 20
     config.httpShouldSetCookies = false
     config.urlCredentialStorage = nil
-    config.httpAdditionalHeaders = ["User-Agent": "SafariIconFixer/0.2.7 (personal macOS icon utility)"]
+    config.httpAdditionalHeaders = ["User-Agent": "SafariIconFixer/0.2.8 (personal macOS icon utility)"]
     let session = URLSession(configuration: config, delegate: CommonsPolicy(), delegateQueue: nil)
     defer { session.invalidateAndCancel() }
     func get(_ url: URL, limit: Int) async throws -> Data {
@@ -124,7 +84,13 @@ private struct Checkerboard: View {
     @State private var selected: IconCandidate?
     @State private var background: IconBackground = .original
     @State private var color: Color = .white
-    @State private var inset = 0.0
+    @State private var inset = 0.12
+    @State private var lightening = 0.40
+    @State private var art: IconArtwork?
+    @State private var googleURL: URL?
+    @State private var showingGoogle = true
+    @State private var googleFilter = "Wszystkie"
+    @State private var picking = false
     @State private var filter = "Wszystkie"
     @State private var status = "Wybierz źródło lub zmień tło istniejącej ikony."
     @State private var loading = false
@@ -135,14 +101,15 @@ private struct Checkerboard: View {
         results.filter { item in filter == "Wszystkie" || (filter == "Przezroczyste" ? item.transparent : !item.transparent) }
     }
     private var preview: Data? {
-        guard let selected else { return nil }
-        return composeIcon(selected.png, background: background, color: NSColor(color), inset: inset)
+        guard let art else { return nil }
+        return composeArtwork(art, background: background, color: NSColor(color), inset: inset, lightening: lightening)
     }
     private func start(website: Bool) {
         let term = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard website || !term.isEmpty else { return }
         job?.cancel()
         let token = UUID(); generation = token
+        showingGoogle = false; picking = false
         loading = true; status = website ? "Pobieranie ikon ze strony…" : "Wyszukiwanie w Wikimedia Commons…"
         job = Task {
             do {
@@ -151,7 +118,7 @@ private struct Checkerboard: View {
                 else { found = try await searchCommons(term) }
                 guard !Task.isCancelled, generation == token else { return }
                 for item in found where !results.contains(where: { $0.png == item.png }) { results.append(item) }
-                if selected == nil { selected = found.first }
+                if selected == nil, let first = found.first { select(first) }
                 status = found.isEmpty ? "Brak wyników. Zmień zapytanie lub wybierz plik." : "Pobrane wyniki: \(found.count). Wybierz grafikę."
             } catch {
                 guard !Task.isCancelled, generation == token else { return }
@@ -167,13 +134,49 @@ private struct Checkerboard: View {
             let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
             guard size <= 8_000_000, let (png, pixels) = safePNG(try Data(contentsOf: url)) else { throw fail("Nieobsługiwany obraz lub plik większy niż 8 MB.") }
             let item = IconCandidate(title: url.lastPathComponent, png: png, pixels: pixels, source: url.lastPathComponent, page: nil)
-            results.append(item); selected = item; filter = "Wszystkie"; status = "Dodano plik lokalny."
+            results.append(item); select(item); filter = "Wszystkie"; status = "Dodano plik lokalny."
         } catch { status = error.localizedDescription }
     }
-    private func browserSearch() {
-        var components = URLComponents(string: "https://www.google.com/search")
-        components?.queryItems = [URLQueryItem(name: "tbm", value: "isch"), URLQueryItem(name: "q", value: query)]
-        if let url = components?.url { NSWorkspace.shared.open(url) }
+    private func select(_ item: IconCandidate) {
+        selected = item; art = IconArtwork(item.png)
+        if art?.separate == false { background = .original }
+    }
+    private func runGoogle() {
+        let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, let url = googleImageSearchURL(text, transparent: googleFilter == "Przezroczyste") else { return }
+        job?.cancel(); generation = UUID(); loading = false
+        showingGoogle = true; picking = false; googleURL = url
+        status = "Otwórz podgląd wyniku, następnie kliknij Wybierz obraz i sam obraz."
+    }
+    private func browserSearch() { if let url = googleImageSearchURL(query, transparent: googleFilter == "Przezroczyste") { NSWorkspace.shared.open(url) } }
+    private func addImage(_ data: Data, source: String) throws {
+        guard let (png, size) = safePNG(data) else { throw fail("Nie udało się odczytać obrazu. Spróbuj wybrać inny.") }
+        let item = IconCandidate(title: "\(title) · \(size) px", png: png, pixels: size, source: source, page: nil)
+        results.append(item); select(item); filter = "Wszystkie"
+        status = size < 128 ? "Mały obraz (\(size) px). Wybierz większy podgląd dla lepszej jakości." : "Obraz pobrany (\(size) px). Ustaw tło i margines."
+    }
+    private func takeGoogleImage(_ value: String) {
+        picking = false; job?.cancel()
+        let token = UUID(); generation = token; loading = true; status = "Pobieram wybraną grafikę…"
+        job = Task {
+            do {
+                let (data, source) = try await selectedGoogleImage(value)
+                guard !Task.isCancelled, generation == token else { return }
+                try addImage(data, source: source)
+            } catch {
+                guard !Task.isCancelled, generation == token else { return }
+                status = "\(error.localizedDescription) Skopiuj obraz prawym przyciskiem i wybierz Wklej obraz."
+            }
+            loading = false
+        }
+    }
+    private func pasteImage() {
+        let paste = NSPasteboard.general
+        do {
+            if let data = paste.data(forType: .png) ?? paste.data(forType: .tiff) { try addImage(data, source: "Schowek"); return }
+            if let images = paste.readObjects(forClasses: [NSImage.self], options: nil) as? [NSImage], let data = images.first?.tiffRepresentation { try addImage(data, source: "Schowek"); return }
+            status = "W schowku nie ma obrazu. Użyj Kopiuj obraz (nie adres obrazu)."
+        } catch { status = error.localizedDescription }
     }
     private func imageTile(_ data: Data, size: CGFloat) -> some View {
         ZStack {
@@ -183,7 +186,7 @@ private struct Checkerboard: View {
     }
     private func resultCell(_ item: IconCandidate) -> some View {
         Button {
-            selected = item
+            select(item)
         } label: {
             VStack(spacing: 5) {
                 imageTile(item.png, size: 62)
@@ -197,37 +200,90 @@ private struct Checkerboard: View {
     private var searchControls: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                TextField("Nazwa, np. Google Drive logo", text: $query).textFieldStyle(.roundedBorder).onSubmit { start(website: false) }
-                Button("Szukaj w Commons") { start(website: false) }.buttonStyle(.borderedProminent).disabled(query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                TextField("Nazwa, np. Google Drive logo", text: $query).textFieldStyle(.roundedBorder).onSubmit { runGoogle() }
+                Picker("", selection: $googleFilter) { Text("Wszystkie").tag("Wszystkie"); Text("Przezroczyste").tag("Przezroczyste") }.labelsHidden().frame(width: 135)
+                Button("Szukaj w Google") { runGoogle() }.buttonStyle(.borderedProminent).disabled(query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
             HStack {
                 Button("Ikony ze strony") { start(website: true) }
-                Button("Google Grafika ↗", action: browserSearch).disabled(query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                Button("Commons") { start(website: false) }
                 Button("Dodaj plik…", action: importFile)
+                Button("Wklej obraz", action: pasteImage)
                 Spacer()
-                if loading { ProgressView().controlSize(.small); Button("Zatrzymaj") { job?.cancel(); generation = UUID(); loading = false; status = "Przerwano wyszukiwanie." } }
+                if loading { ProgressView().controlSize(.small); Button("Stop") { job?.cancel(); generation = UUID(); loading = false; status = "Przerwano." } }
             }
-            Text("Commons otrzyma wpisane zapytanie. Google Grafika otwiera przeglądarkę; znaleziony obraz można dodać jako plik.").font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            Text("Google otrzymuje wpisane zapytanie, bez listy zakładek. Wyniki otwierają się w osadzonej przeglądarce.").font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
+    }
+    private var sourcePanel: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Picker("Źródło", selection: $showingGoogle) {
+                Text("Google Grafika").tag(true)
+                Text("Zebrane ikony (\(results.count))").tag(false)
+            }.pickerStyle(.segmented).labelsHidden()
+            if showingGoogle {
+                HStack {
+                    Button(picking ? "Anuluj wybór" : "Wybierz obraz") { picking.toggle() }.buttonStyle(.borderedProminent).disabled(googleURL == nil)
+                    Spacer()
+                    Button("Otwórz w przeglądarce", action: browserSearch).font(.caption)
+                }
+                if googleURL == nil {
+                    VStack(spacing: 8) {
+                        Image(systemName: "photo.on.rectangle.angled").font(.largeTitle).foregroundStyle(.secondary)
+                        Text("Wpisz frazę i kliknij Szukaj w Google.").foregroundStyle(.secondary)
+                    }.frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    GoogleImageBrowser(url: googleURL, picking: picking, onImage: takeGoogleImage, onNotice: { status = $0 })
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+                Text(picking ? "Kliknij teraz obraz w wynikach lub podglądzie." : "Kliknij zwykły wynik, by go powiększyć. Potem wybierz obraz (lub ⌥ + klik). Większe grafiki dają lepszy efekt.").font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            } else {
+                Picker("", selection: $filter) { ForEach(["Wszystkie", "Przezroczyste", "Z tłem"], id: \.self) { Text($0).tag($0) } }.labelsHidden().pickerStyle(.segmented)
+                ScrollView {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 8)], spacing: 8) { ForEach(visible) { resultCell($0) } }.padding(2)
+                    if visible.isEmpty { Text("Brak ikon w tym widoku.").foregroundStyle(.secondary).padding(12) }
+                }
+            }
+        }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+    private var automaticColor: Color {
+        let base = art?.dominant ?? IconRGB(r: 128, g: 128, b: 128)
+        return Color(nsColor: nsColor(base.lightened(lightening)))
     }
     private var editPanel: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Podgląd po zmianie").font(.headline)
             if let data = preview {
-                HStack { Spacer(); imageTile(data, size: 112); Spacer() }
+                HStack {
+                    Spacer()
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 23, style: .continuous).fill(Color(white: 0.48))
+                        if let image = NSImage(data: data) { Image(nsImage: image).resizable().scaledToFit() }
+                    }.frame(width: 112, height: 112).clipShape(RoundedRectangle(cornerRadius: 23, style: .continuous))
+                    Spacer()
+                }
                 Text(selected?.title ?? "").font(.caption).lineLimit(2)
-                Picker("Tło", selection: $background) { ForEach(IconBackground.allCases) { Text($0.rawValue).tag($0) } }
+                Picker("Tło", selection: $background) { ForEach(IconBackground.allCases) { Text($0.rawValue).tag($0) } }.disabled(art?.separate != true)
                 if background == .custom { ColorPicker("Kolor tła", selection: $color, supportsOpacity: false) }
-                HStack { Text("Margines"); Slider(value: $inset, in: 0...0.25); Text("\(Int(inset*100))%") .monospacedDigit().font(.caption) }
-                if selected?.transparent == false {
-                    Text("Grafika już ma pełne tło. Nie usuwamy go automatycznie; wybierz wynik z przezroczystością.").font(.caption).foregroundStyle(.secondary)
+                if background == .automatic {
+                    HStack {
+                        RoundedRectangle(cornerRadius: 5).fill(automaticColor).frame(width: 32, height: 24)
+                        Text("Rozjaśnienie: \(Int((lightening*100).rounded()))%") .font(.caption)
+                    }
+                    Slider(value: $lightening, in: 0.30...0.50, step: 0.01)
+                }
+                HStack { Text("Margines logo"); Slider(value: $inset, in: 0...0.30); Text("\(Int((inset*100).rounded()))%") .monospacedDigit().font(.caption) }.disabled(art?.separate != true)
+                if art?.separate == false {
+                    Text("Tło tej grafiki jest złożone. Zachowuję cały obraz, żeby nie tworzyć kwadratu z ostrymi rogami. Wybierz logo z jednolitym lub przezroczystym tłem.").font(.caption).foregroundStyle(.secondary)
+                } else {
+                    Text("Margines zmienia tylko logo. Pełne tło zawsze wypełnia kafelek.").font(.caption).foregroundStyle(.secondary)
                 }
                 if let page = selected?.page { Link("Źródło i licencja", destination: page).font(.caption) }
             } else {
                 Text("Wybierz wynik z listy.").foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
-        }.frame(width: 220, alignment: .topLeading)
+        }.frame(width: 235, alignment: .topLeading)
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -236,18 +292,10 @@ private struct Checkerboard: View {
             searchControls
             Divider()
             HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Picker("", selection: $filter) { ForEach(["Wszystkie", "Przezroczyste", "Z tłem"], id: \.self) { Text($0).tag($0) } }.labelsHidden().pickerStyle(.segmented)
-                    ScrollView {
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 8)], spacing: 8) {
-                            ForEach(visible) { resultCell($0) }
-                        }.padding(2)
-                        if visible.isEmpty { Text("Brak ikon w tym widoku.").foregroundStyle(.secondary).padding(12) }
-                    }
-                }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                sourcePanel
                 Divider()
                 ScrollView { editPanel }
-            }.frame(minHeight: 210, maxHeight: .infinity)
+            }.frame(minHeight: 300, maxHeight: .infinity)
             Text(status).font(.caption).foregroundStyle(.secondary).lineLimit(2)
             Divider()
             HStack {
@@ -257,12 +305,12 @@ private struct Checkerboard: View {
                     if let data = preview, let selected { onChoose(Pending(png: data, source: selected.source + " · tło: " + background.rawValue)); dismiss() }
                 }.buttonStyle(.borderedProminent).disabled(preview == nil)
             }
-        }.padding(18).frame(minWidth: 660, idealWidth: 730, minHeight: 470, idealHeight: 505)
+        }.padding(18).frame(minWidth: 720, idealWidth: 900, minHeight: 505, idealHeight: 620)
         .onAppear {
             query = title + " logo"
             if let existing, let (png, pixels) = safePNG(existing) {
                 let item = IconCandidate(title: "Obecna / przygotowana ikona", png: png, pixels: pixels, source: "Lokalna ikona", page: nil)
-                results = [item]; selected = item
+                results = [item]; select(item)
             }
         }
         .onDisappear { job?.cancel(); generation = UUID() }

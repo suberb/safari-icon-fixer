@@ -49,3 +49,42 @@ let fixture = Data(#"{"query":{"pages":[{"title":"File:Logo.svg","index":1,"imag
 let page = try JSONDecoder().decode(CommonsResponse.self, from: fixture).query?.pages?.first
 precondition(page?.title == "File:Logo.svg" && page?.imageinfo?.first?.thumburl?.path == "/a.png")
 print("OK: Commons search URL / encoding / allowlist / JSON fixture")
+
+let google = googleImageSearchURL(queryText, transparent: true)!
+let googleItems = URLComponents(url:google,resolvingAgainstBaseURL:false)!.queryItems!
+precondition(googleItems.contains(URLQueryItem(name:"q",value:queryText)))
+precondition(googleItems.contains(URLQueryItem(name:"tbs",value:"ic:trans")))
+precondition(googlePageURL(google) && googlePageURL(URL(string:"https://consent.google.com/")!))
+precondition(!googlePageURL(URL(string:"https://google.com.example.net/")!))
+precondition(publicImageURL(URL(string:"https://encrypted-tbn0.gstatic.com/image")!))
+for bad in ["file:///etc/passwd","http://example.com/image","https://127.0.0.1/x","https://localhost/x","https://router.local/x","https://[::1]/x","https://example.com:8443/x","https://user@example.com/x"] { precondition(!publicImageURL(URL(string:bad)!)) }
+print("OK: Google query / transparency filter / origin and URL checks")
+
+func tile(_ size: Int, pad: Int, fill: IconRGB, logo: IconRGB) -> IconRaster {
+    var bytes = [UInt8](repeating: 0, count: size*size*4)
+    for y in pad..<(size-pad) { for x in pad..<(size-pad) {
+        let center = x >= size/3 && x < size*2/3 && y >= size/3 && y < size*2/3
+        let c = center ? logo : fill; let i = (y*size+x)*4
+        bytes[i] = UInt8(c.r); bytes[i+1] = UInt8(c.g); bytes[i+2] = UInt8(c.b); bytes[i+3] = 255
+    } }
+    return IconRaster(width:size,height:size,rgba:bytes)
+}
+let white = IconRGB(r:255,g:255,b:255), blue = IconRGB(r:20,g:90,b:220)
+for padding in [0,4] {
+    let image = tile(36,pad:padding,fill:white,logo:blue)
+    precondition(image.edgeBackground() == white)
+    let clean = image.removingEdgeBackground(white)!
+    precondition(clean.bounds() == IconBounds(x:12,y:12,width:12,height:12))
+    precondition(clean.alpha(0) == 0 && clean.rgb(18*36+18) == blue)
+    precondition(clean.dominantColor() == blue)
+}
+precondition(blue.lightened(0.30) == IconRGB(r:91,g:140,b:231))
+precondition(blue.lightened(0.40) == IconRGB(r:114,g:156,b:234))
+precondition(blue.lightened(0.50) == IconRGB(r:138,g:173,b:238))
+var solid = tile(36,pad:0,fill:blue,logo:blue)
+precondition(solid.removingEdgeBackground(blue) == nil)
+var ring = tile(36,pad:4,fill:white,logo:blue)
+for y in 15..<20 { for x in 15..<20 { let i = (y*36+x)*4; ring.rgba[i] = 255; ring.rgba[i+1] = 255; ring.rgba[i+2] = 255 } }
+let preserved = ring.removingEdgeBackground(white)!
+precondition(preserved.alpha(17*36+17) == 255 && preserved.rgb(17*36+17) == white)
+print("OK: padded/opaque backgrounds, connected removal, enclosed white detail, dominant color, 30–50% lightening")

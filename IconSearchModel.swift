@@ -38,3 +38,20 @@ func allowedCommonsURL(_ url: URL) -> Bool {
           url.port == nil || url.port == 443, let host = url.host?.lowercased() else { return false }
     return host == "commons.wikimedia.org" || host == "upload.wikimedia.org"
 }
+
+func googleImageSearchURL(_ text: String, transparent: Bool = false) -> URL? {
+    var components = URLComponents(string: "https://www.google.com/search")
+    components?.queryItems = [URLQueryItem(name: "tbm", value: "isch"), URLQueryItem(name: "q", value: text)]
+    if transparent { components?.queryItems?.append(URLQueryItem(name: "tbs", value: "ic:trans")) }
+    return components?.url
+}
+func googlePageURL(_ url: URL) -> Bool {
+    guard url.scheme == "https", url.user == nil, url.password == nil, url.port == nil || url.port == 443, let host = url.host?.lowercased() else { return false }
+    return host == "google.com" || host.hasSuffix(".google.com") || host == "google.pl" || host.hasSuffix(".google.pl")
+}
+// Only explicit user-selected HTTPS images. Reject literal addresses and local names.
+func publicImageURL(_ url: URL) -> Bool {
+    guard url.scheme == "https", url.user == nil, url.password == nil, url.port == nil || url.port == 443, let host = url.host?.lowercased(), host.contains("."), !host.hasSuffix("."), !host.contains(":"), !host.hasSuffix(".local"), !host.hasSuffix(".internal"), !host.hasSuffix(".localhost"), !host.hasSuffix(".lan"), !host.hasSuffix(".home"), !host.hasSuffix(".test"), !host.hasSuffix(".invalid"), !host.hasSuffix(".example") else { return false }
+    guard let tld = host.split(separator: ".").last, tld.first?.isLetter == true, tld.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" }) else { return false }
+    return true
+}
