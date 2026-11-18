@@ -57,7 +57,7 @@ No subscriptions or telemetry. Bookmarks, icon caches, staged drafts and backups
 
 <div align="center">
 
-**Ana × ChatGPT**
+**hempbiscuit & the machine**
 
 [Buy me a coffee](https://buymeacoffee.com/hempbiscuit)
 

@@ -37,8 +37,8 @@ else
   echo 'PRYWATNE: kod dostępny tylko uprawnionym; aplikacja kieruje do wydań po zalogowaniu. Actions może zużywać minuty planu.'
   read -r -p 'Wpisz PUBLICZNE lub PRYWATNE (Enter = anuluj): ' visibility_choice
   case "$visibility_choice" in
-    PUBLICZNE) gh repo create "$repo" --public --description 'Safari Icon Fixer for macOS — Ana × ChatGPT';;
-    PRYWATNE) gh repo create "$repo" --private --description 'Safari Icon Fixer for macOS — Ana × ChatGPT';;
+    PUBLICZNE) gh repo create "$repo" --public --description 'Safari Icon Fixer for macOS — hempbiscuit & the machine';;
+    PRYWATNE) gh repo create "$repo" --private --description 'Safari Icon Fixer for macOS — hempbiscuit & the machine';;
     *) exit 0;;
   esac
 fi

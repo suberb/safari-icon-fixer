@@ -1,6 +1,6 @@
 # Safari Icon Fixer
 
-**Ana × ChatGPT** · macOS · Bez abonamentu.
+**hempbiscuit & the machine** · macOS · Bez abonamentu.
 
 Naprawa i personalizacja ikon Ulubionych Safari — wybór folderów, wyszukiwanie, własne tło, skalowanie logo, reset, kopie zapasowe. Nie modyfikuje zakładek, haseł ani historii Safari.
 

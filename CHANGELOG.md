@@ -62,7 +62,7 @@ Sześć języków interfejsu (EN/DE/FR/UK/PL/ES), wybór automatyczny i ręczny,
 Instalator DMG dla Apple Silicon, instalacja przez przeciągnięcie do Applications, aktualizator preferuje DMG (obsługuje starsze ZIP), publikacja nowych wersji z main po testach.
 
 ## 0.3.2
-O aplikacji (Ana × ChatGPT), sprawdzanie GitHub Releases, wersjonowanie Git, test aktualizatora, GitHub Actions i paczki do pobrania.
+O aplikacji (hempbiscuit & the machine), sprawdzanie GitHub Releases, wersjonowanie Git, test aktualizatora, GitHub Actions i paczki do pobrania.
 
 ## 0.3.1
 Pełny kafelek Safari; zmiana trybu wyświetlania cache.

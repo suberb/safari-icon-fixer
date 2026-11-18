@@ -72,7 +72,7 @@ enum AppReleaseInfo {
             VStack(spacing: 5) {
                 Text("Safari Icon Fixer").font(.title.bold())
                 Text(l10n("Wersja {0} ({1})", String(describing: AppReleaseInfo.version), String(describing: AppReleaseInfo.build))).font(.subheadline).foregroundStyle(.secondary)
-                Text("Ana × ChatGPT").font(.headline).foregroundStyle(Color.purple)
+                Text("hempbiscuit & the machine").font(.headline).foregroundStyle(Color.purple)
                 Text(l10n("Twoje Safari. Twoje ikony.")).font(.subheadline).foregroundStyle(.secondary)
             }
             Divider()
