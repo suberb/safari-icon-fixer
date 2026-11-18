@@ -1,7 +1,9 @@
-SAFARI ICON FIXER 0.2.3 — prototyp lokalny
+SAFARI ICON FIXER 0.2.4 — prototyp lokalny
 
 Cel: duże ikony Ulubionych na stronie startowej Safari. Nie dotyczy ikon kart.
 Wymagania: macOS 13+; Apple Silicon lub Intel; Apple Command Line Tools.
+
+ZMIANA 0.2.4: stan „W cache” nie jest potwierdzeniem wyświetlania w Safari. Skan odczytuje także download_status_flags i pokazuje diagnostykę pliku. Zaznacz pojedynczą stronę lub kilka stron w wybranym zakresie i wybierz „Napraw zaznaczone” (albo „Wymuś naprawę tej ikony”). Istniejące grafiki są ponownie kodowane do PNG 256 × 256 i przygotowywane do ustawienia flag aktywacji/pobrania na 1 przy zapisie; jeżeli grafiki brakuje, program próbuje ją pobrać. Przygotowanie nie zmienia Safari. Po zamknięciu Safari kliknij Zastosuj i sprawdź efekt. Nie można automatycznie odczytać rzeczywistego renderowania strony startowej z niepublicznego cache. Status pobierania 1 jest konwencją przyjętą w publicznych skryptach naprawczych, nie oficjalną specyfikacją Apple. Nie zmieniamy pozostałych metadanych. Wersja wymaga weryfikacji na macOS.
 
 ZMIANA 0.2.3: podmieniono ikonę na zaakceptowany wariant z szarym tłem, kompasem i limonkową różdżką. Funkcjonalność bez zmian.
 
