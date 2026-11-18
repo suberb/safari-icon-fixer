@@ -59,7 +59,10 @@ No subscriptions or telemetry. Bookmarks, icon caches, staged drafts and backups
 
 **hempbiscuit & the machine**
 
-[Buy me a coffee](https://buymeacoffee.com/hempbiscuit)
+<!-- f1-support -->
+<p><strong>The app is free. F1 tickets aren't.</strong><br>Help me get from the keyboard to the grandstand.</p>
+<a href="https://www.buymeacoffee.com/hempbiscuit"><img src="https://img.buymeacoffee.com/button-api/?text=Fuel%20my%20next%20adventure&amp;emoji=%F0%9F%8F%8E%EF%B8%8F&amp;slug=hempbiscuit&amp;button_colour=BD5FFF&amp;font_colour=ffffff&amp;font_family=Inter&amp;outline_colour=000000&amp;coffee_colour=FFDD00" width="220" alt="Fuel my next adventure — Buy me a coffee"></a>
+<!-- /f1-support -->
 
 </div>
 

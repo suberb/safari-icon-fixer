@@ -28,3 +28,12 @@ h1,h2,h3,p{margin:0}h1,h2,h3{letter-spacing:-.055em;line-height:1.08}.hero{text-
 
 /* Optional support link: allow wrapping at compact widths. */
 .footer-links{flex-wrap:wrap;max-width:100%}.footer-links a:hover{color:var(--accent)}
+
+/* f1-support: quiet footer, no additional panel */
+.f1-support{flex:0 0 100%;min-width:0;display:flex;align-items:center;justify-content:space-between;gap:14px 28px;padding:22px 0;margin:6px 0 0;border-top:1px solid var(--line)}
+.f1-support h2{font-size:16px;font-weight:650;letter-spacing:-.02em;margin:0 0 4px;color:var(--text);line-height:1.35}
+.f1-support p{font-size:13px;color:var(--muted);margin:0;line-height:1.5}
+.f1-support-button{display:block;flex:0 0 auto;max-width:100%}
+.f1-support-button img{display:block;width:220px;max-width:100%;height:auto;border-radius:8px;font-size:13px;color:var(--accent)}
+@media(max-width:640px){.f1-support{flex-direction:column;align-items:flex-start;padding:18px 0;gap:12px}}
+/* /f1-support */
