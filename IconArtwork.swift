@@ -21,7 +21,7 @@ func hasTransparentPixels(_ data: Data) -> Bool {
 }
 
 enum IconBackground: String, CaseIterable, Identifiable {
-    case original = "Oryginalne", transparent = "Przezroczyste", white = "Białe", automatic = "Kolor z ikony", custom = "Własny kolor"
+    case original = "Oryginalne", transparent = "Przezroczyste", white = "Białe", automatic = "Kolor z ikony", smart = "Inteligentne tło", custom = "Własny kolor"
     var id: String { rawValue }
 }
 private let iconBitmapInfo = CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue
@@ -45,6 +45,7 @@ struct IconArtwork {
     let bounds: IconBounds
     let backdrop: IconRGB?
     let dominant: IconRGB?
+    let smartColor: IconRGB
     let separate: Bool
     init?(_ png: Data) {
         guard let image = decodedIcon(png), let pixels = raster(image), let originalBounds = pixels.bounds() else { return nil }
@@ -54,6 +55,7 @@ struct IconArtwork {
         let art = cleaned ?? pixels
         backdrop = cleaned != nil ? edge : nil
         dominant = art.dominantColor()
+        smartColor = art.smartBackground()
         separate = cleaned != nil || originalBounds.width < 256 || originalBounds.height < 256 || hasTransparentPixels(png)
         let logoBounds = art.bounds() ?? originalBounds
         bounds = logoBounds
@@ -70,6 +72,7 @@ func composeArtwork(_ art: IconArtwork, background: IconBackground, color: NSCol
     case .transparent: fill = nil
     case .white: fill = .white
     case .custom: fill = color
+    case .smart: fill = nsColor(art.smartColor)
     case .automatic: fill = nsColor((art.dominant ?? IconRGB(r: 128, g: 128, b: 128)).lightened(max(0.30, min(0.50, lightening))))
     }
     let bitmapInfo = fill == nil ? iconBitmapInfo : (CGImageAlphaInfo.noneSkipLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue)

@@ -441,6 +441,7 @@ func fetchIcon(_ host: String) async -> Pending? {
     @State private var scanCanCancel = false
     @State private var prepareTask: Task<Void, Never>?
     @State private var showBackups = false
+    @State private var collectionReview: CollectionReview?
     @State private var historySite: Site?
     @State private var historyEntries: [HistoricalIcon] = []
     @AppStorage("sif.workspace.previewDark") private var storedPreviewDark = true
@@ -677,7 +678,7 @@ func fetchIcon(_ host: String) async -> Pending? {
         }
     }
     private var libraryCommandsAvailable: Bool {
-        !busy && !permissionDenied && !previewMode && !showAbout && !showPermission && !showBackups && iconEditor == nil && historySite == nil && quickLook == nil && nativePreviewURL == nil && !confirm && !confirmDiscard && !confirmReset && !confirmRestore
+        !busy && !permissionDenied && !previewMode && !showAbout && !showPermission && !showBackups && collectionReview == nil && iconEditor == nil && historySite == nil && quickLook == nil && nativePreviewURL == nil && !confirm && !confirmDiscard && !confirmReset && !confirmRestore
     }
     private func openNativePreview(_ item: Site) {
         guard nativePreviewURL == nil else { return }
@@ -732,22 +733,131 @@ func fetchIcon(_ host: String) async -> Pending? {
         message = l10n("Przygotowano ikonę: {0}. Kliknij Zastosuj, aby zapisać.", item.host)
         return true
     }
-    private func preparePreset(_ preset: StudioPreset, targets: [Site]) {
+    private var collectionExportTargets: [IconCollection.Entry] {
+        let hosts = Set((markedSites.isEmpty ? scoped : markedSites).map(\.host))
+        return protectedIcons.filter { hosts.contains($0.key) }.map { host, saved in
+            IconCollection.Entry(host: host, png: saved.png, display: saved.display)
+        }.sorted { $0.host < $1.host }
+    }
+    // Re-encode to strip metadata and bound imported pixel size; retain the display style.
+    private func collectionPNG(_ data: Data) -> Data? {
+        guard IconCollection.validPNGHeader(data),
+              let source = CGImageSourceCreateWithData(data as CFData, nil),
+              CGImageSourceGetType(source).map({ $0 as String }) == UTType.png.identifier,
+              CGImageSourceGetCount(source) == 1,
+              let (png, _) = safePNG(data) else { return nil }
+        return png
+    }
+    private func exportCollection() {
         guard !busy, !permissionDenied else { return }
+        let candidates = collectionExportTargets
         do {
-            guard try store.hasDisplayColumn() else { throw fail(l10n("Brak parametru stylu w tej wersji Safari. Nic nie zmieniono.")) }
+            let entries = candidates.compactMap { item -> IconCollection.Entry? in
+                guard IconCollection.validHost(item.host) else { return nil }
+                guard let (png, _) = safePNG(item.png), IconCollection.validPNGHeader(png) else { return nil }
+                return .init(host: item.host, png: png, display: item.display)
+            }
+            guard !entries.isEmpty else { throw CocoaError(.fileReadCorruptFile) }
+            let data = try IconCollection(format: 1, icons: entries).encoded()
+            let panel = NSSavePanel(); panel.allowedContentTypes = [.json]; panel.nameFieldStringValue = "Safari Icons.sifcollection.json"
+            panel.message = l10n("Kolekcja zawiera domeny i grafiki. Udostępniaj ją tylko zaufanym osobom.")
+            guard panel.runModal() == .OK, let url = panel.url else { return }
+            try data.write(to: url, options: .atomic)
+            message = l10n("Wyeksportowano {0} ikon. Pominięto {1}.", String(entries.count), String(candidates.count - entries.count))
+        } catch { handleOperationError(error) }
+    }
+    private func importCollection() {
+        guard !busy, !permissionDenied else { return }
+        let panel = NSOpenPanel(); panel.allowedContentTypes = [.json]; panel.canChooseDirectories = false; panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            let info = try url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey, .isSymbolicLinkKey])
+            guard info.isRegularFile == true, info.isSymbolicLink != true, (info.fileSize ?? Int.max) <= IconCollection.maximumBytes else { throw CocoaError(.fileReadCorruptFile) }
+            let collection = try IconCollection.decode(Data(contentsOf: url))
+            // Exact host matches in the current folder only. Never replace an existing draft.
+            let allowed = Set(scoped.filter { $0.registered }.map(\.host))
+            let entries = collection.matching(allowed: allowed, alreadyPrepared: Set(pending.keys))
+            let valid = entries.compactMap { entry -> IconCollection.Entry? in
+                guard let png = collectionPNG(entry.png) else { return nil }
+                return .init(host: entry.host, png: png, display: entry.display)
+            }
+            collectionReview = CollectionReview(entries: valid, total: collection.icons.count, scope: scope)
+        } catch { message = l10n("Nie można odczytać kolekcji ikon.") + " " + error.localizedDescription }
+    }
+    private func stageCollection(_ review: CollectionReview) {
+        guard !busy, !permissionDenied, review.scope == scope else { return }
+        do {
+            let supportsStyle = try store.hasDisplayColumn()
+            let targets = Dictionary(uniqueKeysWithValues: scoped.filter { $0.registered }.map { ($0.host, $0) })
             rememberDraft()
             var count = 0
-            for item in targets where item.registered {
-                guard let data = pending[item.host]?.png ?? item.existing, let art = IconArtwork(data), art.separate,
-                      let result = composeArtwork(art, background: preset.background, color: preset.color, inset: 0.12, lightening: 0.40) else { continue }
+            for item in review.entries {
+                guard let site = targets[item.host], pending[item.host] == nil else { continue }
+                pending[item.host] = Pending(png: item.png, source: l10n("Kolekcje ikon"), custom: true, display: supportsStyle ? item.display : nil, expectedDigest: site.existing.map(iconDigest))
+                if site.existing != nil { replacements.insert(item.host) }
+                count += 1
+            }
+            scheduleDraftSave()
+            message = l10n("Przygotowano {0} ikon z kolekcji. Kliknij Zastosuj, aby zapisać.", String(count))
+        } catch { handleOperationError(error) }
+    }
+    private func collectionReviewView(_ review: CollectionReview) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(l10n("Importuj kolekcję…")).font(.title2.bold())
+            Text(l10n("Dopasowano {0} z {1} ikon w obecnym zakresie.", String(review.entries.count), String(review.total))).foregroundStyle(.secondary)
+            Text(l10n("Istniejące szkice i niedopasowane domeny pominięto. Ikony trafią do szkicu, nie bezpośrednio do Safari.")).font(.callout)
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 8) {
+                    ForEach(review.entries) { entry in
+                        HStack(spacing: 10) {
+                            tile(entry.png, fallback: entry.host, size: 36)
+                            Text(entry.host).lineLimit(1)
+                            Spacer()
+                            if let style = entry.display { Text(style.label).font(.caption).foregroundStyle(.secondary) }
+                        }
+                    }
+                }
+            }.frame(maxHeight: 280)
+            HStack {
+                Button(l10n("Anuluj")) { collectionReview = nil }.keyboardShortcut(.cancelAction)
+                Spacer()
+                Button(l10n("Przygotuj zmianę")) { stageCollection(review); collectionReview = nil }.buttonStyle(.borderedProminent).disabled(review.entries.isEmpty)
+            }
+        }.padding(24).frame(width: 480)
+    }
+    private var collectionMenu: some View {
+        Menu {
+            Button(l10n("Eksportuj zapisane ikony…"), action: exportCollection).disabled(collectionExportTargets.isEmpty)
+            Button(l10n("Importuj kolekcję…"), action: importCollection).disabled(scoped.isEmpty)
+        } label: { Label(l10n("Kolekcje ikon"), systemImage: "square.stack") }
+            .disabled(busy || permissionDenied)
+    }
+    private func preparePreset(_ preset: StudioPreset, targets: [Site]) {
+        guard !busy, !permissionDenied, !targets.isEmpty else { return }
+        do {
+            guard try store.hasDisplayColumn() else { throw fail(l10n("Brak parametru stylu w tej wersji Safari. Nic nie zmieniono.")) }
+        } catch { handleOperationError(error); return }
+        rememberDraft()
+        busy = true; DraftProtection.shared.busy = true
+        prepareTask = Task { @MainActor in
+            defer { prepareTask = nil; busy = false; DraftProtection.shared.busy = false; persistPreparedDraft() }
+            var count = 0
+            for (index, item) in targets.enumerated() {
+                await Task.yield()
+                if Task.isCancelled { break }
+                message = l10n("Przygotowanie {0}/{1}: {2}", String(index+1), String(targets.count), item.host)
+                guard item.registered,
+                      let data = pending[item.host]?.png ?? (recoveryHosts.contains(item.host) ? protectedIcons[item.host]?.png : nil) ?? item.existing,
+                      let art = IconArtwork(data), art.separate,
+                      let result = composeArtwork(art, background: preset.background, color: preset.color(for: art), inset: 0.12, lightening: 0.40) else { continue }
                 let expected = pending[item.host]?.expectedDigest ?? item.existing.map(iconDigest)
                 pending[item.host] = Pending(png: result, source: preset.label, custom: true, display: .fullTile, expectedDigest: expected)
                 if item.existing != nil { replacements.insert(item.host) }
                 count += 1
             }
+            if Task.isCancelled { message = l10n("Przerwano motyw. Zachowano przygotowane ikony."); return }
             message = l10n("Przygotowano {0} ikon. Pominięto {1}: brak grafiki lub złożone tło.", String(count), String(targets.count-count))
-        } catch { handleOperationError(error) }
+        }
     }
     private func acceptDrop(_ providers: [NSItemProvider], onto item: Site) -> Bool {
         guard !busy, !permissionDenied, item.registered, let provider = providers.first else { return false }
@@ -866,6 +976,7 @@ func fetchIcon(_ host: String) async -> Pending? {
                 }
             }
             Divider()
+            collectionMenu
             Button { selectBackup() } label: { Label(l10n("Kopie zapasowe"), systemImage: "clock.arrow.circlepath") }.buttonStyle(.plain).disabled(busy || permissionDenied)
             Button { if permissionDenied { showPermission = true } else { openPrivacySettings() } } label: { Label(l10n("Uprawnienia"), systemImage: "gearshape") }.buttonStyle(.plain)
             Button {
@@ -946,6 +1057,10 @@ func fetchIcon(_ host: String) async -> Pending? {
                 } label: { Label("Color Studio", systemImage: "paintpalette") }
                 resetMenu
             } else {
+                Menu {
+                    ForEach(StudioPreset.allCases, id: \.self) { preset in Button(preset.label) { preparePreset(preset, targets: shown) } }
+                } label: { Label(l10n("Motyw widocznych ikon"), systemImage: "paintpalette") }
+                    .disabled(shown.isEmpty)
                 Text(l10n("⌘ lub ⇧, aby zaznaczyć więcej ikon")).font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
         }.controlSize(.small).disabled(busy)
@@ -1254,6 +1369,7 @@ func fetchIcon(_ host: String) async -> Pending? {
                 stage(site, result: result)
             }
         }
+        .sheet(item: $collectionReview) { review in collectionReviewView(review) }
         .sheet(isPresented: $showPermission, onDismiss: { waitingForPermission = false }) { permissionSheet }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             refreshSafariStatus()
@@ -1271,7 +1387,7 @@ func fetchIcon(_ host: String) async -> Pending? {
         .onReceive(NotificationCenter.default.publisher(for: .sifQuickLook)) { _ in if libraryCommandsAvailable, let item = site { openNativePreview(item) } }
         .onReceive(NotificationCenter.default.publisher(for: .sifCompare)) { _ in if libraryCommandsAvailable, let item = site { quickLook = item } }
         .onReceive(NotificationCenter.default.publisher(for: .sifSearch)) { _ in if libraryCommandsAvailable { searchFocused = true } }
-        .onReceive(NotificationCenter.default.publisher(for: .sifRescan)) { _ in if !busy && iconEditor == nil && !showBackups && !showPermission { scan() } }
+        .onReceive(NotificationCenter.default.publisher(for: .sifRescan)) { _ in if !busy && iconEditor == nil && !showBackups && !showPermission && collectionReview == nil { scan() } }
         .sheet(isPresented: $showBackups, onDismiss: {
             if chosenBackup != nil, requireClosedSafari() { confirmRestore = true }
             else { chosenBackup = nil }
@@ -1361,11 +1477,26 @@ func fetchIcon(_ host: String) async -> Pending? {
             .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: selected)
     }
 }
+private struct CollectionReview: Identifiable {
+    let id = UUID()
+    let entries: [IconCollection.Entry]
+    let total: Int
+    let scope: FavoriteScope
+}
 private enum StudioPreset: CaseIterable {
-    case white, soft, midnight, amethyst
-    var label: String { switch self { case .white: return "Original White"; case .soft: return "Soft Brand"; case .midnight: return "Midnight"; case .amethyst: return "Amethyst" } }
-    var background: IconBackground { switch self { case .white: return .white; case .soft: return .automatic; default: return .custom } }
-    var color: NSColor { switch self { case .white, .soft: return .white; case .midnight: return NSColor(srgbRed: 0.16, green: 0.15, blue: 0.19, alpha: 1); case .amethyst: return NSColor(srgbRed: 0.85, green: 0.78, blue: 0.98, alpha: 1) } }
+    case white, soft, midnight, amethyst, pastel, sandstone, smart
+    var label: String { switch self { case .white: return "Original White"; case .soft: return "Soft Brand"; case .midnight: return "Midnight"; case .amethyst: return "Amethyst"; case .pastel: return "Pastel"; case .sandstone: return "Sandstone"; case .smart: return l10n("Inteligentne tło") } }
+    var background: IconBackground { switch self { case .white: return .white; case .soft: return .automatic; case .smart: return .smart; default: return .custom } }
+    func color(for art: IconArtwork?) -> NSColor {
+        switch self {
+        case .white, .soft: return .white
+        case .midnight: return nsColor(IconRGB(r:38,g:36,b:45))
+        case .amethyst: return nsColor(IconRGB(r:217,g:199,b:250))
+        case .pastel: return nsColor((art?.dominant ?? IconRGB(r:160,g:140,b:220)).lightened(0.80))
+        case .sandstone: return nsColor(IconRGB(r:233,g:221,b:207))
+        case .smart: return nsColor(art?.smartColor ?? IconRGB(r:217,g:199,b:250))
+        }
+    }
 }
 @MainActor private struct InlineIconStudio: View {
     let data: Data
@@ -1416,9 +1547,9 @@ private enum StudioPreset: CaseIterable {
         return hasTransparentPixels(rendered ?? data) ? .systemTile : .fullTile
     }
     private func swatch(_ preset: StudioPreset) -> some View {
-        let tint = preset == .soft ? Color(nsColor: nsColor((art?.dominant ?? IconRGB(r: 128, g: 128, b: 128)).lightened(lightening))) : Color(nsColor: preset.color)
+        let tint = preset == .soft ? Color(nsColor: nsColor((art?.dominant ?? IconRGB(r: 128, g: 128, b: 128)).lightened(lightening))) : Color(nsColor: preset.color(for: art))
         return Button {
-            background = preset.background; color = Color(nsColor: preset.color); selectedPreset = preset; render()
+            background = preset.background; color = Color(nsColor: preset.color(for: art)); selectedPreset = preset; render()
         } label: {
             RoundedRectangle(cornerRadius: 8).fill(tint).frame(width: 29, height: 28)
                 .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.primary.opacity(0.14)))
@@ -1448,10 +1579,12 @@ private enum StudioPreset: CaseIterable {
         VStack(alignment: .leading, spacing: 10) {
             Text(l10n("Wygląd")).font(.callout.weight(.semibold))
             if art?.separate == true {
-                HStack(spacing: 6) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 35, maximum: 42), spacing: 5)], alignment: .leading, spacing: 5) {
                     ForEach(StudioPreset.allCases, id: \.self) { preset in swatch(preset) }
                     ColorPicker(l10n("Własny kolor"), selection: Binding(get: { color }, set: { color = $0; background = .custom; selectedPreset = nil; render() }), supportsOpacity: false).labelsHidden()
-                    Spacer(minLength: 0)
+                }
+                if background == .smart {
+                    Text(l10n("Dobiera tło na podstawie kolorów i jasności logo.")).font(.caption).foregroundStyle(.secondary)
                 }
                 Picker(l10n("Tło"), selection: Binding(get: { background }, set: { background = $0; selectedPreset = nil; render() })) {
                     ForEach(IconBackground.allCases) { Text(l10n($0.rawValue)).tag($0) }

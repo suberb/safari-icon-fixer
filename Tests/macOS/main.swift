@@ -32,3 +32,6 @@ print("OK: pełne tło białe i automatyczne / przezroczyste tło / PNG 256 px")
 precondition(decode(white).alphaInfo == .none || decode(white).alphaInfo == .noneSkipLast || decode(white).alphaInfo == .noneSkipFirst)
 precondition(decode(automatic).alphaInfo == .none || decode(automatic).alphaInfo == .noneSkipLast || decode(automatic).alphaInfo == .noneSkipFirst)
 print("OK: solid backgrounds exported as opaque PNG")
+let smart = composeArtwork(art,background:.smart,color:.white,inset:0.25,lightening:0.4)!
+precondition(!hasTransparentPixels(smart) && decode(smart).width == 256)
+print("OK: Smart Color rendered as full opaque Safari tile")

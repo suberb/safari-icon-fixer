@@ -23,6 +23,7 @@ macOS · Apple Silicon · Free · No account required
 
 - **Repair** missing icons or force-refresh the cached ones Safari isn't showing.
 - **Personalize** with images from the web, custom backgrounds, logo margins, or colors taken from an icon.
+- **Color Studio+**: contrast-aware Smart Color, seven presets, visible-icon or selection styling, and portable local icon collections.
 - **Organize** with a visual library, smart filters and batch color presets (Command/Shift selection).
 - **Preview** a simulated Safari start page before applying. Drag supported graphics onto icons.
 - **Navigate** with arrow keys in the library, Quick Look (⌘Y or Space with library focus on macOS 14+), compare (⇧⌘Y), search (⌘F) and rescan (⌘R).

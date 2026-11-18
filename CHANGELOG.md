@@ -1,5 +1,10 @@
 # Historia wersji
 
+## 0.6.6 — Color Studio+
+- Smart Color chooses a brand tint or a neutral light/dark background based on visible foreground contrast; Soft Brand retains the previous 30–50% lightening.
+- Pastel, Sandstone and Smart Color join the existing four presets. Apply to selected or visible icons in the current scope, as local drafts only.
+- Export protected icons from the selection or folder to a versioned JSON collection; review and import exact matching Favorites without overwriting prepared changes. PNG metadata is stripped by re-encoding; no bookmark titles or folder paths are exported.
+
 ## 0.6.5 — Design Refinement
 - Native Quick Look for icon graphics (Command-Y; Space when the library has focus on macOS 14+). Compare before/after remains available with Shift-Command-Y.
 - Keyboard navigation in the icon library, search (Command-F), rescan (Command-R), hover and drop feedback, clearer selection and VoiceOver values. Animations respect Reduce Motion.

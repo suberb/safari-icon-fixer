@@ -108,3 +108,48 @@ func iconDisplayAssignment(_ style: SafariIconDisplay?) -> String {
     guard let style else { return "" }
     return ", transparency_analysis_result=\(style.rawValue)"
 }
+
+extension IconRGB {
+    var luminance: Double {
+        func linear(_ channel: Int) -> Double {
+            let v = Double(max(0, min(255, channel))) / 255
+            return v <= 0.04045 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b)
+    }
+    func contrast(with other: IconRGB) -> Double {
+        let a = luminance, b = other.luminance
+        return (max(a,b) + 0.05) / (min(a,b) + 0.05)
+    }
+}
+
+extension IconRaster {
+    // A small luminance histogram of opaque foreground pixels. Select a brand tint if
+    // it has good contrast, otherwise compare it with white and dark backgrounds.
+    func smartBackground() -> IconRGB {
+        let base = dominantColor() ?? IconRGB(r: 128, g: 128, b: 128)
+        let candidates = [base.lightened(0.80), base.lightened(0.92), IconRGB(r:255,g:255,b:255), IconRGB(r:38,g:36,b:45)]
+        var histogram = [Int](repeating: 0, count: 32)
+        for p in stride(from: 0, to: width*height, by: 3) where alpha(p) >= 200 {
+            histogram[min(31, Int(rgb(p).luminance * 32))] += 1
+        }
+        let total = histogram.reduce(0,+)
+        guard total > 0 else { return candidates[0] }
+        func score(_ color: IconRGB) -> Double {
+            let l = color.luminance
+            // Fraction of visible foreground with at least 3:1 contrast; then weighted contrast.
+            var passing = 0, sum = 0.0
+            for i in histogram.indices where histogram[i] > 0 {
+                let v = (Double(i)+0.5)/32
+                let ratio = (max(l,v)+0.05)/(min(l,v)+0.05)
+                if ratio >= 3 { passing += histogram[i] }
+                sum += Double(histogram[i]) * min(ratio, 7)
+            }
+            return Double(passing)/Double(total) + 0.015 * sum/Double(total)
+        }
+        let ranked = candidates.map(score)
+        let best = ranked.max() ?? 0
+        // Prefer the first (brand-tinted) option when scores are close.
+        return candidates[ranked.firstIndex(where: { $0 >= best - 0.06 }) ?? 0]
+    }
+}

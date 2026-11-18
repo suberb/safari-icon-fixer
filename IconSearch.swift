@@ -318,6 +318,12 @@ private struct Checkerboard: View {
                         Text(l10n("Tło systemowe")).tag(l10n("Tło systemowe"))
                     }.labelsHidden()
                     Text(l10n("Pełny kafelek usuwa systemowy margines; automatycznie wybierany dla pełnego tła.")).font(.caption).foregroundStyle(.secondary)
+                    if background == .smart, let art {
+                        HStack {
+                            RoundedRectangle(cornerRadius: 5).fill(Color(nsColor: nsColor(art.smartColor))).frame(width: 32, height: 24)
+                            Text(l10n("Dobiera tło na podstawie kolorów i jasności logo.")).font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
                     if background == .custom { ColorPicker(l10n("Własny kolor"), selection: $color, supportsOpacity: false) }
                     if background == .automatic {
                         HStack {
