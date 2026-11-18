@@ -1,5 +1,8 @@
 # Historia wersji
 
+## 0.5.0
+Sparkle 2.10.1: signed updates, optional automatic installation, and automatic checks at launch.
+
 ## 0.4.2
 Clearer repair, customization and restore-default actions in all six languages. Preserve cached PNG bytes and existing display style when repairing; keep prepared changes.
 

@@ -25,7 +25,7 @@ macOS · Apple Silicon · Free · No account required
 - **Personalize** with images from the web, custom backgrounds, logo margins, or colors taken from an icon.
 - **Organize** by Favorites folder or work on individual sites.
 - **Undo** your changes with reset and local backups.
-- **Stay current** with update checks at each launch through GitHub Releases.
+- **Stay current** with signed Sparkle updates, checked on launch, with optional automatic installation.
 
 ## Six languages. One app.
 

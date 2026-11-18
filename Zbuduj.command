@@ -6,12 +6,20 @@ if ! xcode-select -p >/dev/null 2>&1; then
   echo 'Wymagane Command Line Tools. Zainstaluj je poleceniem xcode-select --install, potem ponów.'
   exit 1
 fi
+bash Packaging/FetchSparkle.sh
+SPARKLE="$PWD/build/vendor/sparkle-2.10.1"
 OUT="$PWD/build/Safari Icon Fixer.app"
-mkdir -p "$OUT/Contents/MacOS" "$OUT/Contents/Resources"
+mkdir -p "$OUT/Contents/MacOS" "$OUT/Contents/Resources" "$OUT/Contents/Frameworks"
+if [[ -e "$OUT/Contents/Frameworks/Sparkle.framework" ]]; then rm -rf "$OUT/Contents/Frameworks/Sparkle.framework"; fi
+ditto "$SPARKLE/Sparkle.framework" "$OUT/Contents/Frameworks/Sparkle.framework"
+cp "$SPARKLE/LICENSE" "$OUT/Contents/Resources/Sparkle-LICENSE.txt"
 cp Info.plist "$OUT/Contents/Info.plist"
 cp Resources/AppIcon.icns "$OUT/Contents/Resources/AppIcon.icns"
 cp Resources/Translations.json "$OUT/Contents/Resources/Translations.json"
-xcrun --sdk macosx swiftc -swift-version 5 -parse-as-library -O -target "$(uname -m)-apple-macos13.0" Localization.swift FavoritesIndex.swift PermissionCheck.swift IconSearchModel.swift IconPixels.swift IconArtwork.swift GoogleImageBrowser.swift IconSearch.swift ReleaseModel.swift AppUpdates.swift SafariIconFixer.swift -o "$OUT/Contents/MacOS/SafariIconFixer"
+xcrun --sdk macosx swiftc -swift-version 5 -parse-as-library -O -target "$(uname -m)-apple-macos13.0" Localization.swift FavoritesIndex.swift PermissionCheck.swift IconSearchModel.swift IconPixels.swift IconArtwork.swift GoogleImageBrowser.swift IconSearch.swift ReleaseModel.swift AppUpdates.swift SafariIconFixer.swift -F "$SPARKLE" -framework Sparkle -Xlinker -rpath -Xlinker @executable_path/../Frameworks -o "$OUT/Contents/MacOS/SafariIconFixer"
+codesign --verify --deep --strict "$OUT/Contents/Frameworks/Sparkle.framework"
 codesign --force --sign - "$OUT"
+codesign --verify --deep --strict "$OUT"
+otool -L "$OUT/Contents/MacOS/SafariIconFixer" | grep -F '@rpath/Sparkle.framework/'
 echo "Zbudowano: $OUT"
 if [[ "${CI:-}" != true && "${SIF_NO_FINDER:-}" != 1 ]]; then open -R "$OUT"; fi

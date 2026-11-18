@@ -7,7 +7,7 @@ APP="$PWD/build/Safari Icon Fixer.app"
 DMG="$PWD/dist/SafariIconFixer-$VERSION-macOS-arm64.dmg"
 mkdir -p dist
 [[ ! -e "$DMG" ]] || { echo "Remove the previous local DMG before rebuilding."; exit 1; }
-codesign --verify --strict --verbose=2 "$APP"
+codesign --verify --deep --strict --verbose=2 "$APP"
 TEMP=$(mktemp -d)
 MOUNT="$TEMP/mount"
 mkdir "$MOUNT"
@@ -23,7 +23,7 @@ mounted=1
 test -f "$MOUNT/.DS_Store"
 test -L "$MOUNT/Applications"
 test "$(readlink "$MOUNT/Applications")" = /Applications
-codesign --verify --strict --verbose=2 "$MOUNT/Safari Icon Fixer.app"
+codesign --verify --deep --strict --verbose=2 "$MOUNT/Safari Icon Fixer.app"
 hdiutil detach "$MOUNT"
 mounted=0
 printf 'Verified DMG: %s\n' "$DMG"

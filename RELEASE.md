@@ -1,8 +1,8 @@
-## Safari Icon Fixer 0.4.2 — Clearer icon actions
+## Safari Icon Fixer 0.5.0 — Sparkle Edition
 
-- Fix display, Customize icon and Restore default Safari icon now have distinct labels and explanations in six languages.
-- Repair preserves a valid existing PNG and its Safari display style, and does not replace queued customization.
-- Restore explains possible temporary placeholders and creates a backup.
-- Purple DMG installer and launch-time update checks retained. Sparkle automatic installation is not included yet.
+- Signed Sparkle updates directly in the app.
+- Check on every launch if automatic checks are enabled.
+- Optional automatic download and installation; opt in under About.
+- Signed DMG and appcast; unchanged six interface languages and icon tools.
 
-Apple Silicon DMG; ad hoc signing, not Apple-notarized. macOS may require individual approval and Full Disk Access.
+Install this version once from the DMG. Future updates can be installed by Sparkle. Save pending icon edits before updating. Sparkle dialogs may follow macOS language rather than the app language override. The app is ad hoc signed and not Apple-notarized; macOS may request approval or Full Disk Access again. In case of trouble, download the DMG manually. Automatic installation requires a compatible, writable installation and may require authorization.

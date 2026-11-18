@@ -300,7 +300,7 @@ func fetchIcon(_ host: String) async -> Pending? {
     @State private var store = Cache(safari: FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Safari"))
     @State private var sites: [Site] = []; @State private var pending: [String: Pending] = [:]; @State private var replacements = Set<String>()
     @State private var marked = Set<String>()
-    @StateObject private var updates = AppUpdates()
+    @StateObject private var updates = AppUpdates.shared
     @State private var showAbout = false
     @State private var gridMode = true
     @State private var folders: [FavoriteFolder] = []; @State private var scope: FavoriteScope = .root
@@ -508,10 +508,7 @@ func fetchIcon(_ host: String) async -> Pending? {
                 if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Safari") { NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration(), completionHandler: nil) }
             } label: { Label(l10n("Otwórz Safari"), systemImage: "safari") }.buttonStyle(.plain)
             Button { showAbout = true } label: { Label(l10n("O aplikacji"), systemImage: "info.circle") }.buttonStyle(.plain)
-            if updates.available != nil {
-                Button { showAbout = true } label: { Label(l10n("Nowa wersja"), systemImage: "arrow.down.circle.fill") }
-                    .buttonStyle(.plain).foregroundStyle(purple)
-            }
+
         }.padding(12).frame(width: 180).frame(maxHeight: .infinity, alignment: .topLeading)
             .background(.regularMaterial)
     }
@@ -735,12 +732,11 @@ func fetchIcon(_ host: String) async -> Pending? {
         .frame(minWidth: 900, minHeight: 510)
         .tint(purple)
         .onAppear(perform: scan)
-        .task { await updates.checkAtLaunch() }
+        .task { updates.checkAtLaunch() }
         .sheet(isPresented: $showAbout) { AppAboutView(updates: updates) }
         .onReceive(NotificationCenter.default.publisher(for: .sifAbout)) { _ in showAbout = true }
         .onReceive(NotificationCenter.default.publisher(for: .sifUpdate)) { _ in
-            showAbout = true
-            Task { await updates.check() }
+            updates.check()
         }
         .sheet(item: $iconEditor) { site in
             IconSearchView(host: site.host, title: site.names.first ?? site.host, existing: pending[site.host]?.png ?? site.existing) { result in
@@ -754,7 +750,6 @@ func fetchIcon(_ host: String) async -> Pending? {
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             if waitingForPermission && permissionDenied { runScan(presentPermission: false) }
             else if waitingForPermission { waitingForPermission = false }
-            Task { await updates.checkIfDue() }
         }
         .onChange(of: scope) { _ in selected = nil }
         .alert(l10n("Zastosować przygotowane ikony?"),isPresented:$confirm) { Button(l10n("Anuluj"),role:.cancel){}; Button(l10n("Zapisz"),action:write) } message: { Text(l10n("Zakres: {0}. Zapis: {1} ikon. Safari współdzieli ikony domen, więc zmiana może być widoczna również w innych folderach i poza Ulubionymi. Zamknij Safari przez ⌘Q. Przed zapisem powstanie kopia cache.", String(describing: scopeLabel), String(describing: scopedPending.count))) }
@@ -768,6 +763,7 @@ func fetchIcon(_ host: String) async -> Pending? {
     }
 }
 @main struct SafariIconFixerApp: App {
+    @StateObject private var updates = AppUpdates.shared
     var body: some Scene {
         WindowGroup { MainView() }.defaultSize(width: 1040, height: 640).windowResizability(.contentMinSize)
             .commands {
@@ -791,7 +787,7 @@ func fetchIcon(_ host: String) async -> Pending? {
                 }
                 CommandGroup(replacing: .appInfo) {
                     Button(l10n("O Safari Icon Fixer")) { NotificationCenter.default.post(name: .sifAbout, object: nil) }
-                    Button(l10n("Sprawdź aktualizacje…")) { NotificationCenter.default.post(name: .sifUpdate, object: nil) }
+                    Button(l10n("Sprawdź aktualizacje…")) { updates.check() }.disabled(!updates.canCheck)
                 }
             }
     }

@@ -19,11 +19,27 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.4.2</string>
+	<string>0.5.0</string>
 	<key>CFBundleVersion</key>
-	<string>18</string>
+	<string>19</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>13.0</string>
+	<key>SUFeedURL</key>
+	<string>https://github.com/suberb/safari-icon-fixer/releases/latest/download/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>cxsRl/qyMJMgXb9LVKl4HULWHKozT1sr+ogfM+KR/vo=</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUAutomaticallyUpdate</key>
+	<false/>
+	<key>SUVerifyUpdateBeforeExtraction</key>
+	<true/>
+	<key>SURequireSignedFeed</key>
+	<true/>
+	<key>SUSignedFeedFailureExpirationInterval</key>
+	<integer>0</integer>
+	<key>SUEnableSystemProfiling</key>
+	<false/>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSHumanReadableCopyright</key>

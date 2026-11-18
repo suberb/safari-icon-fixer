@@ -12,3 +12,7 @@ Plik history.bundle zawiera rzeczywiste zachowane snapshoty od 0.1 do 0.3.2, z o
 ## Kolejne wydania (od 0.3.3)
 
 Zwiększ wersję i numer kompilacji w Info.plist, zaktualizuj RELEASE.md i CHANGELOG.md, uruchom testy i wypchnij commit na main. GitHub Actions po udanych testach zbuduje DMG dla Apple Silicon, zweryfikuje obraz i opublikuje wydanie z SHA256SUMS. Ręcznie można też wysłać tag `vX.Y.Z` zgodny z Info.plist lub uruchomić workflow z opcją publish na main. Istniejące tagi i wydania nie są nadpisywane. GitHub dodaje własne archiwa źródłowe automatycznie. Dla dystrybucji publicznej zalecany jest Developer ID i notaryzacja Apple; nie zostały skonfigurowane.
+
+## Sparkle (od 0.5.0)
+
+Publikacja podpisanego DMG i appcast.xml odbywa się wyłącznie z zaufanego main. Wymagany GitHub Actions secret SPARKLE_PRIVATE_KEY, zgodny z SUPublicEDKey w Info.plist. Nie umieszczaj prywatnego klucza w repozytorium ani w logach. Skrypt sprawdza podpis DMG niezależnie z publicznym kluczem przed publikacją. Kopię prywatnego klucza przechowuj bezpiecznie poza GitHub. Nie zmieniaj klucza publicznego bez planu migracji. Nie publikuj nowszych wydań bez appcast.xml.

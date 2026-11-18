@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 import Combine
 import Foundation
+import Sparkle
 
 extension Notification.Name {
     static let sifAbout = Notification.Name("SafariIconFixer.showAbout")
@@ -9,78 +10,56 @@ extension Notification.Name {
 }
 
 enum AppReleaseInfo {
-    static var version: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.4.2" }
-    static var build: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "18" }
+    static var version: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.5.0" }
+    static var build: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "19" }
     static let repository = "suberb/safari-icon-fixer"
     static let repositoryURL = URL(string: "https://github.com/\(repository)")!
     static let releasesURL = repositoryURL.appendingPathComponent("releases")
-    static let endpoint = URL(string: "https://api.github.com/repos/\(repository)/releases/latest")!
-    #if arch(arm64)
-    static let architecture = "arm64"
-    #else
-    static let architecture = "x86_64"
-    #endif
-    static func releaseURL(_ release: GitHubRelease) -> URL {
-        guard let version = release.version else { return releasesURL }
-        return releasesURL.appendingPathComponent("tag").appendingPathComponent(release.tagName.hasPrefix("v") ? "v\(version.string)" : version.string)
-    }
-    static func downloadURL(_ release: GitHubRelease) -> URL? {
-        guard let version = release.version, let filename = release.macAsset(architecture: architecture) else { return nil }
-        let tag = release.tagName.hasPrefix("v") ? "v\(version.string)" : version.string
-        return releasesURL.appendingPathComponent("download").appendingPathComponent(tag).appendingPathComponent(filename)
-    }
 }
 
 @MainActor final class AppUpdates: ObservableObject {
-    @Published private(set) var available: GitHubRelease?
-    @Published private(set) var checking = false
-    @Published private(set) var status = l10n("Nie sprawdzano aktualizacji.")
-    @Published var automatic: Bool = UserDefaults.standard.object(forKey: "sif.updates.auto") as? Bool ?? true {
-        didSet { UserDefaults.standard.set(automatic, forKey: "sif.updates.auto") }
-    }
-    private let lastAttemptKey = "sif.updates.lastAttempt"
-    private var launchCheckStarted = false
-    func checkAtLaunch() async {
-        guard automatic, !launchCheckStarted else { return }
-        launchCheckStarted = true
-        await check()
-    }
-    func checkIfDue() async {
-        guard launchCheckStarted else { return }
-        guard automatic, Date().timeIntervalSince1970 - UserDefaults.standard.double(forKey: lastAttemptKey) >= 86400 else { return }
-        await check()
-    }
-    func check() async {
-        guard !checking else { return }
-        checking = true
-        defer { checking = false }
-        status = l10n("Sprawdzanie w GitHub Releases…")
-        UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: lastAttemptKey)
-        do {
-            var request = URLRequest(url: AppReleaseInfo.endpoint, timeoutInterval: 15)
-            request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-            request.setValue("SafariIconFixer/\(AppReleaseInfo.version)", forHTTPHeaderField: "User-Agent")
-            let config = URLSessionConfiguration.ephemeral
-            config.httpShouldSetCookies = false
-            config.urlCache = nil
-            let session = URLSession(configuration: config)
-            defer { session.finishTasksAndInvalidate() }
-            let (data, response) = try await session.data(for: request)
-            guard let http = response as? HTTPURLResponse else { status = l10n("Nieprawidłowa odpowiedź GitHub."); return }
-            switch http.statusCode {
-            case 200: break
-            case 404: status = l10n("Brak publicznego wydania lub repozytorium jest prywatne. Otwórz wydania w GitHub po zalogowaniu."); return
-            case 403, 429: status = l10n("GitHub ograniczył dostęp do API. Spróbuj później."); return
-            default: status = l10n("GitHub zwrócił błąd HTTP {0}.", String(describing: http.statusCode)); return
-            }
-            guard let current = ReleaseVersion(AppReleaseInfo.version), let release = try? JSONDecoder().decode(GitHubRelease.self, from: data), let latest = release.version else {
-                status = l10n("Nie można odczytać numeru stabilnego wydania."); return
-            }
-            available = latest > current ? release : nil
-            status = latest > current ? l10n("Dostępna wersja {0}.", String(describing: latest.string)) : l10n("Masz aktualną wersję.")
-        } catch {
-            status = l10n("Nie udało się połączyć z GitHub. Sprawdź internet i spróbuj ponownie.")
+    static let shared = AppUpdates()
+    private let controller: SPUStandardUpdaterController
+    private var started = false
+    @Published private(set) var automatic = false
+    @Published private(set) var autoInstall = false
+    @Published private(set) var canCheck = false
+    @Published private(set) var canAutoInstall = false
+
+    private init() {
+        // Migrate the old app preference once, before Sparkle reads its defaults.
+        let defaults = UserDefaults.standard
+        if defaults.object(forKey: "SUEnableAutomaticChecks") == nil,
+           let previous = defaults.object(forKey: "sif.updates.auto") as? Bool {
+            defaults.set(previous, forKey: "SUEnableAutomaticChecks")
         }
+        controller = SPUStandardUpdaterController(startingUpdater: false, updaterDelegate: nil, userDriverDelegate: nil)
+        let updater = controller.updater
+        updater.publisher(for: \.canCheckForUpdates).assign(to: &$canCheck)
+        updater.publisher(for: \.automaticallyChecksForUpdates).assign(to: &$automatic)
+        updater.publisher(for: \.automaticallyDownloadsUpdates).assign(to: &$autoInstall)
+        updater.publisher(for: \.allowsAutomaticUpdates).assign(to: &$canAutoInstall)
+    }
+    func checkAtLaunch() {
+        guard !started else { return }
+        started = true
+        controller.startUpdater()
+        if controller.updater.automaticallyChecksForUpdates {
+            controller.updater.checkForUpdatesInBackground()
+        }
+    }
+    func check() {
+        if !started { checkAtLaunch() }
+        guard controller.updater.canCheckForUpdates else { return }
+        controller.checkForUpdates(nil)
+    }
+    func setAutomatic(_ enabled: Bool) {
+        controller.updater.automaticallyChecksForUpdates = enabled
+        if !enabled { controller.updater.automaticallyDownloadsUpdates = false }
+    }
+    func setAutoInstall(_ enabled: Bool) {
+        guard controller.updater.allowsAutomaticUpdates else { return }
+        controller.updater.automaticallyDownloadsUpdates = enabled
     }
 }
 
@@ -101,26 +80,11 @@ enum AppReleaseInfo {
                 HStack {
                     Text(l10n("Aktualizacje")).font(.headline)
                     Spacer()
-                    if updates.checking { ProgressView().controlSize(.small) }
-                    Button(l10n("Sprawdź teraz")) { Task { await updates.check() } }.disabled(updates.checking)
+                    Button(l10n("Sprawdź teraz")) { updates.check() }.disabled(!updates.canCheck)
                 }
-                Text(updates.status).font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                if let release = updates.available {
-                    if let notes = release.body, !notes.isEmpty {
-                        ScrollView { Text(notes).font(.caption).frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled) }.frame(maxHeight: 105)
-                    }
-                    HStack {
-                        Link(l10n("Informacje o wydaniu"), destination: AppReleaseInfo.releaseURL(release))
-                        Spacer()
-                        if let url = AppReleaseInfo.downloadURL(release) {
-                            Button(url.pathExtension == "dmg" ? l10n("Pobierz DMG") : l10n("Pobierz aktualizację")) { NSWorkspace.shared.open(url) }.buttonStyle(.borderedProminent)
-                        } else {
-                            Link(l10n("Pobierz z GitHub"), destination: AppReleaseInfo.releaseURL(release))
-                        }
-                    }
-                }
-                Toggle(l10n("Automatycznie sprawdzaj aktualizacje"), isOn: $updates.automatic)
-                Text(l10n("Sprawdzanie przy każdym uruchomieniu i raz dziennie podczas aktywności. GitHub otrzymuje tylko zapytanie o wydanie, nie zakładki ani ikony. Instalujesz aktualizację samodzielnie."))
+                Toggle(l10n("Automatycznie sprawdzaj aktualizacje"), isOn: Binding(get: { updates.automatic }, set: { updates.setAutomatic($0) }))
+                Toggle(l10n("Automatycznie pobieraj i instaluj aktualizacje"), isOn: Binding(get: { updates.autoInstall }, set: { updates.setAutoInstall($0) })).disabled(!updates.canAutoInstall)
+                Text(l10n("Sparkle sprawdza podpis aktualizacji. Przy włączonej automatycznej instalacji aktualizacja może zostać zainstalowana przy zamknięciu aplikacji. Przed aktualizacją zapisz przygotowane ikony."))
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }.padding(14).background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
             HStack {

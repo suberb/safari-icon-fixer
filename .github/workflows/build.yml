@@ -40,9 +40,9 @@ jobs:
           path: dist/*.dmg
           if-no-files-found: error
   release:
-    if: startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish)))
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish))
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: macos-15
     concurrency:
       group: safari-icon-fixer-publish
       cancel-in-progress: false
@@ -54,6 +54,14 @@ jobs:
         with:
           name: SafariIconFixer-macOS
           path: dist
+      - name: Check current release is still main
+        run: |
+          set -euo pipefail
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$GITHUB_SHA"
+      - name: Sign DMG and appcast
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: bash Packaging/SignRelease.sh
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -75,7 +83,8 @@ jobs:
             echo "Release already exists; not replacing assets."
             exit 0
           fi
-          (cd dist && sha256sum *.dmg > SHA256SUMS.txt)
+          test -f dist/appcast.xml
+          test -f dist/SHA256SUMS.txt
           if [[ -n "$TARGET" ]]; then
             gh release create "$TAG" dist/* --verify-tag --title "Safari Icon Fixer $VERSION" --notes-file RELEASE.md
           else
