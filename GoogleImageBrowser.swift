@@ -62,6 +62,7 @@ import WebKit
         let script = WKUserScript(source: Self.script, injectionTime: .atDocumentStart, forMainFrameOnly: true, in: Self.world)
         config.userContentController.addUserScript(script)
         let view = WKWebView(frame: .zero, configuration: config)
+        view.pageZoom = 0.82
         view.navigationDelegate = context.coordinator
         context.coordinator.view = view
         context.coordinator.installMonitor()
@@ -122,6 +123,9 @@ import WebKit
         func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) { setPicking() }
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { setPicking() }
         func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+            let failure = error as NSError
+            // WebKit cancels provisional loads during regular redirects and result changes.
+            if (failure.domain == NSURLErrorDomain && failure.code == NSURLErrorCancelled) || (failure.domain == "WebKitErrorDomain" && failure.code == 102) { return }
             parent.onNotice("Google Grafika: \(error.localizedDescription). Możesz wkleić obraz lub otworzyć przeglądarkę.")
         }
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {

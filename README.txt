@@ -1,3 +1,7 @@
+Safari Icon Fixer 0.3.0 — przeprojektowane UI
+
+Nowy układ: panel folderów, biblioteka z widokiem kafelków i listy, panel wybranej ikony. Fioletowy akcent, natywne kolory jasne/ciemne macOS. Filtr Własne wymaga rejestru podmian z 0.2.9+. Edytor: porównanie przed/po, wyszukiwarka Google wewnątrz aplikacji, menu źródeł i importu, niezależnie przewijany panel ustawień tła. Zmniejszono domyślne powiększenie strony Google i pominięto komunikaty o zwykłym przerwaniu nawigacji. Nie gwarantuje to poprawnego wyboru obrazu — Google może zmieniać stronę i blokować pobieranie. W razie problemu użyj importu ze schowka/pliku. Mechanizmy zapisu, resetu i uprawnień zachowano z poprzedniej wersji. Minimalny rozmiar głównego okna 900 × 510 punktów. Brak SDK macOS: nie sprawdzono faktycznego wyglądu, pełnej kompilacji ani działania Google na żywo.
+
 SAFARI ICON FIXER 0.2.8 — prototyp lokalny
 
 Cel: duże ikony Ulubionych na stronie startowej Safari. Nie dotyczy ikon kart.

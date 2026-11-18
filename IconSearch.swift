@@ -26,7 +26,7 @@ func searchCommons(_ text: String) async throws -> [IconCandidate] {
     config.timeoutIntervalForResource = 20
     config.httpShouldSetCookies = false
     config.urlCredentialStorage = nil
-    config.httpAdditionalHeaders = ["User-Agent": "SafariIconFixer/0.2.9 (personal macOS icon utility)"]
+    config.httpAdditionalHeaders = ["User-Agent": "SafariIconFixer/0.3.0 (personal macOS icon utility)"]
     let session = URLSession(configuration: config, delegate: CommonsPolicy(), delegateQueue: nil)
     defer { session.invalidateAndCancel() }
     func get(_ url: URL, limit: Int) async throws -> Data {
@@ -134,7 +134,7 @@ private struct Checkerboard: View {
             let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
             guard size <= 8_000_000, let (png, pixels) = safePNG(try Data(contentsOf: url)) else { throw fail("Nieobsługiwany obraz lub plik większy niż 8 MB.") }
             let item = IconCandidate(title: url.lastPathComponent, png: png, pixels: pixels, source: url.lastPathComponent, page: nil)
-            results.append(item); select(item); filter = "Wszystkie"; status = "Dodano plik lokalny."
+            results.append(item); select(item); filter = "Wszystkie"; showingGoogle = false; status = "Dodano plik lokalny."
         } catch { status = error.localizedDescription }
     }
     private func select(_ item: IconCandidate) {
@@ -202,115 +202,172 @@ private struct Checkerboard: View {
                 .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(selected?.id == item.id ? Color.accentColor : Color.secondary.opacity(0.2)))
         }.buttonStyle(.plain).help(item.title)
     }
+    private var editorSurface: Color { Color(nsColor: .controlBackgroundColor) }
+    private var editorAccent: Color { Color(red: 0.55, green: 0.34, blue: 0.91) }
     private var searchControls: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                TextField("Nazwa, np. Google Drive logo", text: $query).textFieldStyle(.roundedBorder).onSubmit { runGoogle() }
-                Picker("", selection: $googleFilter) { Text("Wszystkie").tag("Wszystkie"); Text("Przezroczyste").tag("Przezroczyste") }.labelsHidden().frame(width: 135)
-                Button("Szukaj w Google") { runGoogle() }.buttonStyle(.borderedProminent).disabled(query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                    TextField("Nazwa, np. Google Drive logo", text: $query).textFieldStyle(.plain).onSubmit { runGoogle() }
+                    if !query.isEmpty { Button { query = "" } label: { Image(systemName: "xmark.circle.fill") }.buttonStyle(.plain).foregroundStyle(.secondary) }
+                }.padding(10).background(editorSurface, in: RoundedRectangle(cornerRadius: 9))
+                Picker("Filtr Google", selection: $googleFilter) { Text("Wszystkie").tag("Wszystkie"); Text("Przezroczyste").tag("Przezroczyste") }.labelsHidden().frame(width: 127)
+                Button { runGoogle() } label: { Label("Szukaj", systemImage: "magnifyingglass") }.buttonStyle(.borderedProminent).controlSize(.large).disabled(query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
-            HStack {
-                Button("Ikony ze strony") { start(website: true) }
-                Button("Commons") { start(website: false) }
-                Button("Dodaj plik…", action: importFile)
-                Button("Wklej obraz/adres", action: pasteImage)
-                Spacer()
+            HStack(spacing: 8) {
+                Button { start(website: true) } label: { Label("Ze strony", systemImage: "globe") }
+                Menu {
+                    Button("Wikimedia Commons") { start(website: false) }
+                    Button("Otwórz Google w przeglądarce", action: browserSearch)
+                } label: { Label("Źródła", systemImage: "ellipsis.circle") }
+                Spacer(minLength: 1)
+                Menu {
+                    Button("Wybierz plik…", action: importFile)
+                    Button("Wklej obraz lub adres", action: pasteImage)
+                } label: { Label("Importuj", systemImage: "square.and.arrow.down") }
                 if loading { ProgressView().controlSize(.small); Button("Stop") { job?.cancel(); generation = UUID(); loading = false; status = "Przerwano." } }
+            }.controlSize(.small)
+        }
+    }
+    private var googlePanel: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text(picking ? "Kliknij wybrany obraz" : "Wyniki wyszukiwania").font(.caption.weight(.medium)).foregroundStyle(picking ? editorAccent : Color.secondary)
+                Spacer(minLength: 0)
+                Button { picking.toggle() } label: { Label(picking ? "Anuluj" : "Wybierz obraz", systemImage: picking ? "xmark" : "cursorarrow.click") }
+                    .buttonStyle(.borderedProminent).controlSize(.small).disabled(googleURL == nil || loading)
             }
-            Text("Google otrzymuje wpisane zapytanie, bez listy zakładek. Wyniki otwierają się w osadzonej przeglądarce.").font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            if googleURL == nil {
+                VStack(spacing: 12) {
+                    Image(systemName: "magnifyingglass.circle").font(.system(size: 42, weight: .light)).foregroundStyle(editorAccent)
+                    Text("Znajdź idealną ikonę").font(.headline)
+                    Text("Wpisz nazwę lub pobierz ikonę ze strony.\nMożesz też wkleić własny obraz.").font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    Button("Szukaj w Google", action: runGoogle).buttonStyle(.bordered).disabled(query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }.padding().frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(editorSurface, in: RoundedRectangle(cornerRadius: 12))
+            } else {
+                GoogleImageBrowser(url: googleURL, picking: picking, onImage: takeGoogleImage, onNotice: { status = $0 })
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(picking ? editorAccent : Color.secondary.opacity(0.18), lineWidth: picking ? 2 : 1))
+            }
+            Text(picking ? "Kliknij środek obrazu." : "Otwórz wynik, a potem wybierz obraz lub użyj ⌥ + klik.").font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        }
+    }
+    private var collectedPanel: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            Picker("Filtr", selection: $filter) { ForEach(["Wszystkie", "Przezroczyste", "Z tłem"], id: \.self) { Text($0).tag($0) } }.labelsHidden().pickerStyle(.segmented)
+            ScrollView {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 99), spacing: 10)], spacing: 10) { ForEach(visible) { resultCell($0) } }.padding(2)
+                if visible.isEmpty { Text("Brak ikon w tym widoku.").foregroundStyle(.secondary).padding(20) }
+            }
         }
     }
     private var sourcePanel: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 12) {
+            searchControls
             Picker("Źródło", selection: $showingGoogle) {
                 Text("Google Grafika").tag(true)
-                Text("Zebrane ikony (\(results.count))").tag(false)
+                Text("Zebrane (\(results.count))").tag(false)
             }.pickerStyle(.segmented).labelsHidden()
-            if showingGoogle {
-                HStack {
-                    Button(picking ? "Anuluj wybór" : "Wybierz obraz") { picking.toggle() }.buttonStyle(.borderedProminent).disabled(googleURL == nil || loading)
-                    Spacer()
-                    Button("Otwórz w przeglądarce", action: browserSearch).font(.caption)
-                }
-                if googleURL == nil {
-                    VStack(spacing: 8) {
-                        Image(systemName: "photo.on.rectangle.angled").font(.largeTitle).foregroundStyle(.secondary)
-                        Text("Wpisz frazę i kliknij Szukaj w Google.").foregroundStyle(.secondary)
-                    }.frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    GoogleImageBrowser(url: googleURL, picking: picking, onImage: takeGoogleImage, onNotice: { status = $0 })
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
-                Text(picking ? "Kliknij środek obrazu w wynikach lub podglądzie." : "Kliknij zwykły wynik, by go powiększyć. Potem wybierz obraz (lub ⌥ + klik). Możesz też skopiować obraz lub adres prawym przyciskiem i wkleić go powyżej.").font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            } else {
-                Picker("", selection: $filter) { ForEach(["Wszystkie", "Przezroczyste", "Z tłem"], id: \.self) { Text($0).tag($0) } }.labelsHidden().pickerStyle(.segmented)
-                ScrollView {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 8)], spacing: 8) { ForEach(visible) { resultCell($0) } }.padding(2)
-                    if visible.isEmpty { Text("Brak ikon w tym widoku.").foregroundStyle(.secondary).padding(12) }
-                }
-            }
+            if showingGoogle { googlePanel } else { collectedPanel }
         }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
     private var automaticColor: Color {
         let base = art?.dominant ?? IconRGB(r: 128, g: 128, b: 128)
         return Color(nsColor: nsColor(base.lightened(lightening)))
     }
+    private func previewTile(_ data: Data?, size: CGFloat, label: String) -> some View {
+        VStack(spacing: 6) {
+            ZStack {
+                RoundedRectangle(cornerRadius: size * 0.22, style: .continuous).fill(Color(white: 0.48))
+                if let data, let image = NSImage(data: data) { Image(nsImage: image).resizable().scaledToFit() }
+                else { Text(title.prefix(1)).font(.system(size: size * 0.4)).foregroundStyle(.white) }
+            }.frame(width: size, height: size).clipShape(RoundedRectangle(cornerRadius: size * 0.22, style: .continuous))
+            .shadow(color: .black.opacity(0.13), radius: 5, y: 3)
+            Text(label).font(.caption2).foregroundStyle(.secondary)
+        }
+    }
     private var editPanel: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Podgląd po zmianie").font(.headline)
+        VStack(alignment: .leading, spacing: 16) {
+            Text("PODGLĄD").font(.caption2.weight(.semibold)).tracking(1.2).foregroundStyle(.secondary)
             if let data = preview {
-                HStack {
-                    Spacer()
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 23, style: .continuous).fill(Color(white: 0.48))
-                        if let image = NSImage(data: data) { Image(nsImage: image).resizable().scaledToFit() }
-                    }.frame(width: 112, height: 112).clipShape(RoundedRectangle(cornerRadius: 23, style: .continuous))
-                    Spacer()
-                }
-                Text(selected?.title ?? "").font(.caption).lineLimit(2)
-                Picker("Tło", selection: $background) { ForEach(IconBackground.allCases) { Text($0.rawValue).tag($0) } }.disabled(art?.separate != true)
-                if background == .custom { ColorPicker("Kolor tła", selection: $color, supportsOpacity: false) }
-                if background == .automatic {
-                    HStack {
-                        RoundedRectangle(cornerRadius: 5).fill(automaticColor).frame(width: 32, height: 24)
-                        Text("Rozjaśnienie: \(Int((lightening*100).rounded()))%") .font(.caption)
+                HStack(alignment: .center, spacing: 12) {
+                    previewTile(existing, size: 65, label: "Przed")
+                    Image(systemName: "arrow.right").font(.caption).foregroundStyle(.secondary)
+                    previewTile(data, size: 104, label: "Po zmianie")
+                }.frame(maxWidth: .infinity).padding(.vertical, 14)
+                    .background(editorSurface, in: RoundedRectangle(cornerRadius: 12))
+                if let item = selected { Text("\(item.pixels) px · \(item.transparent ? "Przezroczysta" : "Z tłem")").font(.caption).foregroundStyle(.secondary) }
+                Divider()
+                Text("Dostosuj").font(.headline)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Tło").font(.callout.weight(.medium))
+                    Picker("Tło", selection: $background) { ForEach(IconBackground.allCases) { Text($0.rawValue).tag($0) } }.labelsHidden().disabled(art?.separate != true)
+                    if background == .custom { ColorPicker("Własny kolor", selection: $color, supportsOpacity: false) }
+                    if background == .automatic {
+                        HStack {
+                            RoundedRectangle(cornerRadius: 5).fill(automaticColor).frame(width: 32, height: 24)
+                            Text("Rozjaśnienie").font(.caption); Spacer(); Text("\(Int((lightening*100).rounded()))%").font(.caption.monospacedDigit())
+                        }
+                        Slider(value: $lightening, in: 0.30...0.50, step: 0.01)
                     }
-                    Slider(value: $lightening, in: 0.30...0.50, step: 0.01)
                 }
-                HStack { Text("Margines logo"); Slider(value: $inset, in: 0...0.30); Text("\(Int((inset*100).rounded()))%") .monospacedDigit().font(.caption) }.disabled(art?.separate != true)
-                if art?.separate == false {
-                    Text("Tło tej grafiki jest złożone. Zachowuję cały obraz, żeby nie tworzyć kwadratu z ostrymi rogami. Wybierz logo z jednolitym lub przezroczystym tłem.").font(.caption).foregroundStyle(.secondary)
-                } else {
-                    Text("Margines zmienia tylko logo. Pełne tło zawsze wypełnia kafelek.").font(.caption).foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 5) {
+                    HStack { Text("Margines logo").font(.callout.weight(.medium)); Spacer(); Text("\(Int((inset*100).rounded()))%").font(.caption.monospacedDigit()).foregroundStyle(.secondary) }
+                    Slider(value: $inset, in: 0...0.30).disabled(art?.separate != true)
+                    if art?.separate == false {
+                        Text("Złożone tło. Zachowuję cały obraz, aby nie tworzyć ostrych krawędzi.").font(.caption).foregroundStyle(.secondary)
+                    } else {
+                        Text("Tło zawsze wypełnia cały kafelek.").font(.caption).foregroundStyle(.secondary)
+                    }
                 }
                 if let page = selected?.page { Link("Źródło i licencja", destination: page).font(.caption) }
             } else {
-                Text("Wybierz wynik z listy.").foregroundStyle(.secondary)
+                Text("Wybierz obraz, aby edytować ikonę.").foregroundStyle(.secondary)
+            }
+        }.frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+    private var editorHeader: some View {
+        HStack(spacing: 11) {
+            if let existing, let img = NSImage(data: existing) {
+                Image(nsImage: img).resizable().scaledToFit().frame(width: 40, height: 40).clipShape(RoundedRectangle(cornerRadius: 9))
+            } else {
+                Image(systemName: "wand.and.stars").font(.title2).foregroundStyle(editorAccent).frame(width: 40, height: 40)
+            }
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Edytuj ikonę · \(title)").font(.system(size: 22, weight: .semibold)).lineLimit(1)
+                Text(host).font(.caption).foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
-        }.frame(width: 235, alignment: .topLeading)
+            Button { dismiss() } label: { Image(systemName: "xmark.circle.fill").font(.title2).foregroundStyle(.secondary) }.buttonStyle(.plain).keyboardShortcut(.cancelAction).help("Anuluj")
+        }.padding(15)
+    }
+    private var editorFooter: some View {
+        HStack(spacing: 9) {
+            if loading { ProgressView().controlSize(.small) } else { Image(systemName: "info.circle").foregroundStyle(.secondary) }
+            Text(status).font(.caption).foregroundStyle(.secondary).lineLimit(2).help(status)
+            Spacer(minLength: 5)
+            Button("Anuluj") { dismiss() }
+            Button {
+                if let data = preview, let selected { onChoose(Pending(png: data, source: selected.source + " · tło: " + background.rawValue, custom: true)); dismiss() }
+            } label: { Label("Użyj ikony", systemImage: "checkmark") }.buttonStyle(.borderedProminent).controlSize(.large).disabled(preview == nil || loading || picking)
+        }.padding(12)
     }
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Znajdź ikonę — \(title)").font(.title2.bold()).lineLimit(1)
-            Text(host).font(.caption).foregroundStyle(.secondary)
-            searchControls
+        VStack(spacing: 0) {
+            editorHeader
             Divider()
-            HStack(alignment: .top, spacing: 12) {
-                sourcePanel
+            HStack(alignment: .top, spacing: 0) {
+                sourcePanel.padding(14)
                 Divider()
-                ScrollView { editPanel }
-            }.frame(minHeight: 300, maxHeight: .infinity)
-            Text(status).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                ScrollView { editPanel.padding(14) }.frame(width: 255).background(.regularMaterial)
+            }.frame(minHeight: 310, maxHeight: .infinity)
             Divider()
-            HStack {
-                Button("Anuluj") { dismiss() }.keyboardShortcut(.cancelAction)
-                Spacer()
-                Button("Użyj tej ikony") {
-                    if let data = preview, let selected { onChoose(Pending(png: data, source: selected.source + " · tło: " + background.rawValue, custom: true)); dismiss() }
-                }.buttonStyle(.borderedProminent).disabled(preview == nil || loading || picking)
-            }
-        }.padding(18).frame(minWidth: 720, idealWidth: 900, minHeight: 505, idealHeight: 620)
+            editorFooter
+        }.frame(minWidth: 820, idealWidth: 990, minHeight: 500, idealHeight: 620)
+        .tint(editorAccent)
         .onAppear {
             query = title + " logo"
             if let existing, let (png, pixels) = safePNG(existing) {
