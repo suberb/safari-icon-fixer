@@ -15,7 +15,7 @@ Aplikacja jest podpisywana ad hoc, nie notaryzowana. Używa niepublicznego forma
 
 ## Aktualizacje
 
-Od 0.5.0 aplikacja korzysta ze Sparkle 2.10.1. Menu aplikacji → Sprawdź aktualizacje, lub O aplikacji. Automatyczne sprawdzanie jest domyślnie włączone; automatyczne pobieranie i instalacja wymagają świadomego włączenia w ustawieniach. Sparkle weryfikuje podpis EdDSA zarówno instalatora DMG, jak i appcast.xml. Podpisy nie zastępują notaryzacji Apple. Pierwsza instalacja 0.5.0 wymaga DMG. Przed aktualizacją zastosuj przygotowane ikony, ponieważ niezapisana kolejka jest w pamięci. W razie problemów z aktualizacją pobierz DMG ręcznie. Nowe wydania podpisuje wyłącznie GitHub Actions ze stabilnej gałęzi main przy użyciu sekretu SPARKLE_PRIVATE_KEY; prywatny klucz nigdy nie trafia do projektu.
+Od 0.5.0 aplikacja korzysta ze Sparkle 2.10.1. Menu aplikacji → Sprawdź aktualizacje, lub O aplikacji. Automatyczne sprawdzanie jest domyślnie włączone; automatyczne pobieranie i instalacja wymagają świadomego włączenia w ustawieniach. Sparkle weryfikuje podpis EdDSA zarówno instalatora DMG, jak i appcast.xml. Podpisy nie zastępują notaryzacji Apple. Pierwsza instalacja 0.5.0 wymaga DMG. Przed aktualizacją najlepiej zastosować przygotowane ikony. Od 0.6.0 kolejka jest lokalnie zapisywana jako PreparedIcons.json i przy następnym odczycie Safari przywracana tylko dla domen o pasującym skrócie grafiki. Nie jest to gwarancja odzyskania po awarii; niedopasowane wpisy są pomijane. Podczas pracy z anomaliami cache zachowaj kopie zapasowe. W razie problemów z aktualizacją pobierz DMG ręcznie. Nowe wydania podpisuje wyłącznie GitHub Actions ze stabilnej gałęzi main przy użyciu sekretu SPARKLE_PRIVATE_KEY; prywatny klucz nigdy nie trafia do projektu.
 
 ## Rozwijanie
 
@@ -24,3 +24,7 @@ Szczegóły i historia funkcji: [README.txt](../README.txt), [CHANGELOG.md](../C
 ## Prywatność
 
 Brak telemetrii. Żądania wysyłane są podczas wyszukiwania/pobierania ikon i sprawdzania aktualizacji. Repozytorium nie zawiera prawdziwych zakładek, danych Safari ani tokenów. Dane i cache pozostają na komputerze. Szczegóły w README.txt.
+
+## Amethyst 0.6.0
+
+⌘/⇧: zaznaczanie; ⌘⇧A: zaznacz widoczne; ⌘Y: porównanie wybranej ikony; ⌘⌥Z: cofnij ostatni krok kolejki. Podgląd Safari jest symulacją w kolejności biblioteki. Szybka naprawa przygotowuje wykryte brakujące lub nieaktywne ikony, nie wykrywa rzeczywistego wyświetlania. Color Studio pomija złożone tła w operacji zbiorczej. Historia pokazuje unikatowe obrazy z do 40 najnowszych lokalnych kopii; przywrócenie obrazu jest przygotowywane w kolejce, a nie wykonywane bezpośrednio. Przeciąganie obsługuje pliki lokalne i kompatybilne reprezentacje obrazu (nie każde źródło internetowe). Projekt strony w docs/index.html, uruchomienie Pages po publikacji przez Ustaw-strone-GitHub.command.

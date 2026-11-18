@@ -99,7 +99,7 @@ struct IconRaster {
 }
 
 // Safari's private cache display styles; empirically documented, not an Apple API.
-enum SafariIconDisplay: Int {
+enum SafariIconDisplay: Int, Codable {
     case systemTile = 0
     case fullTile = 1
     var label: String { self == .fullTile ? l10n("Pełny kafelek") : l10n("Tło systemowe") }

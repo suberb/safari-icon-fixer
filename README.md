@@ -9,7 +9,7 @@ Repair missing Favorites icons, customize your start page, and make Safari feel 
 
 <a href="https://github.com/suberb/safari-icon-fixer/releases/latest"><img src="docs/media/download.svg" width="276" alt="Download for macOS — DMG"></a>
 
-[Latest release](https://github.com/suberb/safari-icon-fixer/releases/latest) · [All releases](https://github.com/suberb/safari-icon-fixer/releases) · [Changelog](CHANGELOG.md)
+[Product website](https://suberb.github.io/safari-icon-fixer/) · [Latest release](https://github.com/suberb/safari-icon-fixer/releases/latest) · [All releases](https://github.com/suberb/safari-icon-fixer/releases) · [Changelog](CHANGELOG.md)
 
 macOS · Apple Silicon · Free · No account required
 
@@ -23,8 +23,9 @@ macOS · Apple Silicon · Free · No account required
 
 - **Repair** missing icons or force-refresh the cached ones Safari isn't showing.
 - **Personalize** with images from the web, custom backgrounds, logo margins, or colors taken from an icon.
-- **Organize** by Favorites folder or work on individual sites.
-- **Undo** your changes with reset and local backups.
+- **Organize** with a visual library, smart filters and batch color presets (Command/Shift selection).
+- **Preview** a simulated Safari start page before applying. Drag supported graphics onto icons.
+- **Undo** staged edits, recover compatible drafts and restore earlier graphics from local backups.
 - **Stay current** with signed Sparkle updates, checked on launch, with optional automatic installation.
 
 ## Six languages. One app.
@@ -43,7 +44,7 @@ Automatically follows your preferred supported system language, or choose your o
 
 ## Made for your Mac
 
-No subscriptions or telemetry. Bookmarks, icon caches and backups stay on your Mac; network requests are made for image searches, downloads and update checks. Safari's internal icon cache can change between versions, so compatibility isn't guaranteed.
+No subscriptions or telemetry. Bookmarks, icon caches, staged drafts and backups stay on your Mac; network requests are made for image searches, downloads and update checks. Safari's internal icon cache can change between versions, so compatibility isn't guaranteed.
 
 [Technical documentation](docs/TECHNICAL.md) · [Source and build instructions](README.txt) · [Report an issue](https://github.com/suberb/safari-icon-fixer/issues)
 

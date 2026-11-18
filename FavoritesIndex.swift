@@ -55,3 +55,23 @@ struct FavoritesIndex {
     }
     func hosts(in scope: FavoriteScope) -> Set<String> { Set(links.filter { scope.includes($0.folder) }.map(\.host)) }
 }
+
+// Selection in the currently visible order: normal, Command toggle, Shift range.
+struct LibrarySelection {
+    let selected: Set<String>
+    let anchor: String?
+    static func click(_ item: String, ordered: [String], selected: Set<String>, anchor: String?, extend: Bool, toggle: Bool) -> LibrarySelection {
+        guard let end = ordered.firstIndex(of: item) else { return .init(selected: [], anchor: nil) }
+        let visible = selected.intersection(ordered)
+        if extend, let anchor, let start = ordered.firstIndex(of: anchor) {
+            let range = Set(ordered[min(start,end)...max(start,end)])
+            return .init(selected: toggle ? visible.union(range) : range, anchor: anchor)
+        }
+        if toggle {
+            var next = visible
+            if !next.insert(item).inserted { next.remove(item) }
+            return .init(selected: next, anchor: item)
+        }
+        return .init(selected: [item], anchor: item)
+    }
+}

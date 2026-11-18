@@ -209,7 +209,7 @@ private struct Checkerboard: View {
         }.buttonStyle(.plain).help(item.title)
     }
     private var editorSurface: Color { Color(nsColor: .controlBackgroundColor) }
-    private var editorAccent: Color { Color(red: 0.55, green: 0.34, blue: 0.91) }
+    private var editorAccent: Color { Color(red: 137.0/255, green: 96.0/255, blue: 232.0/255) }
     private var searchControls: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {

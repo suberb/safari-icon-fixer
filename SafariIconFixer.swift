@@ -19,7 +19,7 @@ struct Site: Identifiable {
         return l10n("W cache") // This is not proof of rendering in Safari.
     }
 }
-struct Pending {
+struct Pending: Codable, Equatable {
     let png: Data; let source: String; let custom: Bool; let display: SafariIconDisplay?; let expectedDigest: String?
     init(png: Data, source: String, custom: Bool = false, display: SafariIconDisplay? = nil, expectedDigest: String? = nil) { self.png = png; self.source = source; self.custom = custom; self.display = display; self.expectedDigest = expectedDigest }
 }
@@ -52,6 +52,12 @@ func safePNG(_ data: Data) -> (Data, Int)? {
     guard let dest = CGImageDestinationCreateWithData(out as CFMutableData, UTType.png.identifier as CFString, 1, nil) else { return nil }; CGImageDestinationAddImage(dest, rendered, nil); guard CGImageDestinationFinalize(dest) else { return nil }; return (out as Data, score)
 }
 
+struct HistoricalIcon: Identifiable {
+    let id: String
+    let date: Date
+    let png: Data
+    let style: SafariIconDisplay?
+}
 struct Cache {
     static let fm = FileManager.default
     let safari: URL
@@ -60,6 +66,51 @@ struct Cache {
     var images: URL { cache.appendingPathComponent("Images", isDirectory: true) }
     var backups: URL { Cache.fm.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/Safari Icon Fixer/Backups", isDirectory: true) }
     var registryURL: URL { backups.deletingLastPathComponent().appendingPathComponent("CustomIcons.json") }
+    var draftURL: URL { backups.deletingLastPathComponent().appendingPathComponent("PreparedIcons.json") }
+    func readDraft() throws -> [String: Pending] {
+        guard Cache.fm.fileExists(atPath: draftURL.path) else { return [:] }
+        let info = try draftURL.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey, .isSymbolicLinkKey])
+        guard info.isRegularFile == true, info.isSymbolicLink != true, (info.fileSize ?? Int.max) <= 160_000_000 else { throw fail(l10n("Nie można odczytać przygotowanych ikon.")) }
+        return try JSONDecoder().decode([String: Pending].self, from: Data(contentsOf: draftURL))
+    }
+    func saveDraft(_ items: [String: Pending]) throws {
+        if items.isEmpty {
+            if Cache.fm.fileExists(atPath: draftURL.path) { try Cache.fm.removeItem(at: draftURL) }
+            return
+        }
+        try Cache.fm.createDirectory(at: draftURL.deletingLastPathComponent(), withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        let data = try JSONEncoder().encode(items)
+        guard data.count <= 160_000_000 else { throw fail(l10n("Nie można zapisać przygotowanych ikon.")) }
+        try data.write(to: draftURL, options: .atomic)
+        try Cache.fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: draftURL.path)
+    }
+    func history(for host: String) throws -> [HistoricalIcon] {
+        guard Cache.fm.fileExists(atPath: backups.path) else { return [] }
+        let keys: Set<URLResourceKey> = [.isDirectoryKey, .isSymbolicLinkKey, .creationDateKey, .contentModificationDateKey]
+        let directories = try Cache.fm.contentsOfDirectory(at: backups, includingPropertiesForKeys: Array(keys), options: [.skipsHiddenFiles])
+        let candidates = directories.compactMap { path -> (URL, Date)? in
+            guard UUID(uuidString: path.lastPathComponent) != nil, let info = try? path.resourceValues(forKeys: keys), info.isDirectory == true, info.isSymbolicLink != true else { return nil }
+            return (path, info.creationDate ?? info.contentModificationDate ?? .distantPast)
+        }.sorted { $0.1 > $1.1 }
+        var result: [HistoricalIcon] = []
+        var seen = Set<String>()
+        for (directory, date) in candidates.prefix(40) {
+            let imageDir = directory.appendingPathComponent("Images", isDirectory: true)
+            guard (try? imageDir.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) != true else { continue }
+            let file = imageDir.appendingPathComponent(hash(host) + ".png")
+            guard let info = try? file.resourceValues(forKeys: [.isSymbolicLinkKey, .isRegularFileKey, .fileSizeKey]), info.isSymbolicLink != true, info.isRegularFile == true, (info.fileSize ?? Int.max) <= 8_000_000,
+                  let data = try? Data(contentsOf: file), safePNG(data) != nil else { continue }
+            let oldDB = directory.appendingPathComponent("TouchIconCacheSettings.db")
+            var display: SafariIconDisplay?
+            if let dbInfo = try? oldDB.resourceValues(forKeys: [.isSymbolicLinkKey, .isRegularFileKey]), dbInfo.isRegularFile == true, dbInfo.isSymbolicLink != true,
+               let oldRows = try? rows(oldDB, "SELECT transparency_analysis_result AS style FROM cache_settings WHERE host=\(quote(host));"), oldRows.count == 1,
+               let code = oldRows.first?["style"] as? Int { display = SafariIconDisplay(rawValue: code) }
+            let digest = iconDigest(data) + ":" + String(display?.rawValue ?? -1)
+            guard seen.insert(digest).inserted else { continue }
+            result.append(HistoricalIcon(id: digest, date: date, png: data, style: display))
+        }
+        return result
+    }
     func registry() throws -> [String: String] {
         guard Cache.fm.fileExists(atPath: registryURL.path) else { return [:] }
         return try JSONDecoder().decode([String: String].self, from: Data(contentsOf: registryURL))
@@ -142,7 +193,9 @@ struct Cache {
         guard !safariRunning else { throw fail(l10n("Zamknij Safari (⌘Q), a następnie ponów.")) }
         try Cache.fm.createDirectory(at: backups, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         let dest = backups.appendingPathComponent(UUID().uuidString, isDirectory: true)
-        try Cache.fm.copyItem(at: cache, to: dest); return dest
+        try Cache.fm.copyItem(at: cache, to: dest)
+        let now = Date(); try? Cache.fm.setAttributes([.creationDate: now, .modificationDate: now], ofItemAtPath: dest.path)
+        return dest
     }
     func apply(_ pending: [String: Pending], allowingReplacement: Set<String>, scope: FavoriteScope) throws -> (URL, Int) {
         guard !pending.isEmpty, !safariRunning else { throw fail(l10n("Zamknij Safari (⌘Q) i przygotuj ikony.")) }
@@ -302,7 +355,25 @@ func fetchIcon(_ host: String) async -> Pending? {
     @State private var marked = Set<String>()
     @StateObject private var updates = AppUpdates.shared
     @State private var showAbout = false
-    @State private var gridMode = true
+    @AppStorage("sif.workspace.grid") private var gridMode = true
+    @AppStorage("sif.workspace.sidebar") private var showSidebar = true
+    @AppStorage("sif.workspace.inspector") private var showInspector = true
+    @AppStorage("sif.workspace.tileSize") private var iconSize = 62.0
+    @State private var previewMode = false
+    @State private var previewAfter = true
+
+    @State private var anchor: String?
+    @State private var confirmDiscard = false
+    @State private var quickLook: Site?
+    @State private var showTechnical = false
+    @State private var draftLoaded = false
+    @State private var draftWritable = false
+    @State private var historySite: Site?
+    @State private var historyEntries: [HistoricalIcon] = []
+    @AppStorage("sif.workspace.previewDark") private var storedPreviewDark = true
+    @AppStorage("sif.workspace.filter") private var storedFilter = 0
+    @State private var undoPending: [String: Pending]?
+    @State private var undoReplacements: Set<String> = []
     @State private var folders: [FavoriteFolder] = []; @State private var scope: FavoriteScope = .root
     @State private var selected: String?; @State private var filter = l10n("Wszystkie"); @State private var search = ""; @State private var message = l10n("Przeskanuj Ulubione Safari. Nic nie zostanie zmienione."); @State private var busy = false; @State private var confirm = false; @State private var confirmRestore = false; @State private var chosenBackup: URL?
     @State private var permissionDenied = false
@@ -324,9 +395,43 @@ func fetchIcon(_ host: String) async -> Pending? {
         do {
             let saved = try store.reset(resetHosts, scope: resetScope, trackedOnly: resetTrackedOnly)
             for host in resetHosts { pending.removeValue(forKey: host); replacements.remove(host); marked.remove(host) }
+            undoPending = nil
             let count = resetHosts.count
             scan(); message = l10n("Zresetowano {0} ikon. Otwórz Safari; w razie potrzeby odwiedź strony, aby pobrać oryginalne ikony. Kopia: {1}.", String(describing: count), String(describing: saved.lastPathComponent))
         } catch { handleOperationError(error) }
+    }
+    private var filterChoices: [String] { [l10n("Wszystkie"), l10n("Brakujące"), l10n("Gotowe"), l10n("Własne")] }
+    private func loadPreparedDraft() {
+        guard !draftLoaded else { return }
+        draftLoaded = true
+        do {
+            let saved = try store.readDraft()
+            let byHost = Dictionary(uniqueKeysWithValues: sites.map { ($0.host, $0) })
+            var recovered: [String: Pending] = [:]
+            for (host, item) in saved {
+                guard let current = byHost[host], current.registered, current.existing.map(iconDigest) == item.expectedDigest, safePNG(item.png) != nil else { continue }
+                recovered[host] = item
+            }
+            pending = recovered; replacements = Set(recovered.keys.filter { byHost[$0]?.existing != nil })
+            draftWritable = true
+            if !saved.isEmpty { message = l10n("Odzyskano {0} przygotowanych ikon. Pominięto {1} nieaktualnych.", String(recovered.count), String(saved.count - recovered.count)) }
+        } catch {
+            draftWritable = false
+            message = l10n("Nie można odczytać przygotowanych ikon.") + " " + error.localizedDescription
+        }
+    }
+    private func persistPreparedDraft() {
+        DraftProtection.shared.pending = pending.count
+        guard draftLoaded, draftWritable, !busy else { return }
+        // Ensure every queued item has the baseline digest when an existing icon was present.
+        // No Safari data leaves the Mac; the draft is restored only after a fresh scan.
+        do { try store.saveDraft(pending) }
+        catch { message = l10n("Nie można zapisać przygotowanych ikon.") + " " + error.localizedDescription }
+    }
+    private func openHistory(_ item: Site) {
+        guard !busy, !permissionDenied else { return }
+        do { historyEntries = try store.history(for: item.host); historySite = item }
+        catch { handleOperationError(error) }
     }
     var scoped: [Site] {
         var result: [Site] = []
@@ -377,16 +482,17 @@ func fetchIcon(_ host: String) async -> Pending? {
                 return site.host
             })
             if case .folder = scope, !folders.contains(where: { $0.scope == scope }) { scope = .root }
-            let hosts = Set(sites.map(\.host)); pending = pending.filter { hosts.contains($0.key) }; replacements.formIntersection(hosts); marked.formIntersection(hosts)
+            let hosts = Set(sites.map(\.host)); pending = pending.filter { hosts.contains($0.key) }; replacements.formIntersection(hosts); marked.formIntersection(hosts); undoPending = nil
             permissionDenied = false; showPermission = false; waitingForPermission = false; permissionHelp = ""
             message = l10n("Odczytano {0} domen w Ulubionych. W wybranym zakresie: {1}.", String(describing: sites.count), String(describing: scoped.count))
+            loadPreparedDraft()
         } catch {
             sites = []; folders = []; selected = nil; customHosts = []
             if isSafariPermissionError(error) {
                 reportPermission(error, present: presentPermission)
             } else {
                 permissionDenied = false; showPermission = false; waitingForPermission = false
-                pending = [:]; replacements = []; marked = []; scope = .root
+                marked = []; scope = .root
                 message = l10n("Nie można odczytać Safari: {0}", String(describing: error.localizedDescription))
             }
         }
@@ -395,6 +501,7 @@ func fetchIcon(_ host: String) async -> Pending? {
         guard !busy, !permissionDenied else { return }
         do {
             guard try store.hasDisplayColumn() else { throw fail(l10n("Brak parametru stylu w tej wersji Safari. Nic nie zmieniono.")) }
+            rememberDraft()
             var count = 0
             for site in targets where site.registered {
                 guard let data = pending[site.host]?.png ?? site.existing else { continue }
@@ -411,6 +518,7 @@ func fetchIcon(_ host: String) async -> Pending? {
     func prepareMarked() { prepareSites(markedSites) }
     func prepareSites(_ targets: [Site]) {
         guard !busy, !permissionDenied, !targets.isEmpty else { return }
+        rememberDraft()
         busy = true
         Task {
             var failures = 0
@@ -432,23 +540,88 @@ func fetchIcon(_ host: String) async -> Pending? {
             message = l10n("Przygotowano {0} ikon w zakresie. Nie zmieniono Safari. Niepowodzenia: {1}.", String(describing: scopedPending.count), String(describing: failures))
         }
     }
+    private func selectSite(_ item: Site) {
+        let flags = NSEvent.modifierFlags
+        let selection = LibrarySelection.click(item.host, ordered: shown.map(\.host), selected: marked, anchor: anchor, extend: flags.contains(.shift), toggle: flags.contains(.command))
+        marked = selection.selected
+        anchor = selection.anchor
+        selected = marked.contains(item.host) ? item.host : shown.first(where: { marked.contains($0.host) })?.host
+    }
+    private func selectAllVisible() {
+        marked = Set(shown.map(\.host)); selected = shown.first?.host; anchor = selected
+    }
+    private func clearSelection() { marked = []; selected = nil; anchor = nil }
+    private func rememberDraft() { undoPending = pending; undoReplacements = replacements }
+    private func undoDraft() {
+        guard !busy, let previous = undoPending else { return }
+        pending = previous; replacements = undoReplacements; undoPending = nil
+    }
+    private func stage(_ item: Site, result: Pending) {
+        guard !busy, !permissionDenied, let current = scoped.first(where: { $0.host == item.host && $0.registered }), current.existing.map(iconDigest) == item.existing.map(iconDigest) else { return }
+        let prior = pending[item.host]
+        rememberDraft()
+        pending[item.host] = Pending(png: result.png, source: result.source, custom: result.custom, display: result.display, expectedDigest: prior?.expectedDigest ?? item.existing.map(iconDigest))
+        if item.existing != nil { replacements.insert(item.host) }
+        message = l10n("Przygotowano ikonę: {0}. Kliknij Zastosuj, aby zapisać.", item.host)
+    }
+    private func preparePreset(_ preset: StudioPreset, targets: [Site]) {
+        guard !busy, !permissionDenied else { return }
+        do {
+            guard try store.hasDisplayColumn() else { throw fail(l10n("Brak parametru stylu w tej wersji Safari. Nic nie zmieniono.")) }
+            rememberDraft()
+            var count = 0
+            for item in targets where item.registered {
+                guard let data = pending[item.host]?.png ?? item.existing, let art = IconArtwork(data), art.separate,
+                      let result = composeArtwork(art, background: preset.background, color: preset.color, inset: 0.12, lightening: 0.40) else { continue }
+                let expected = pending[item.host]?.expectedDigest ?? item.existing.map(iconDigest)
+                pending[item.host] = Pending(png: result, source: preset.label, custom: true, display: .fullTile, expectedDigest: expected)
+                if item.existing != nil { replacements.insert(item.host) }
+                count += 1
+            }
+            message = l10n("Przygotowano {0} ikon. Pominięto {1}: brak grafiki lub złożone tło.", String(count), String(targets.count-count))
+        } catch { handleOperationError(error) }
+    }
+    private func acceptDrop(_ providers: [NSItemProvider], onto item: Site) -> Bool {
+        guard !busy, !permissionDenied, item.registered, let provider = providers.first else { return false }
+        if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+            provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { value, _ in
+                let url = (value as? URL) ?? (value as? Data).flatMap { URL(dataRepresentation: $0, relativeTo: nil) }
+                guard let url, url.isFileURL else { return }
+                let access = url.startAccessingSecurityScopedResource()
+                defer { if access { url.stopAccessingSecurityScopedResource() } }
+                guard let values = try? url.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey]), values.isRegularFile == true, let size = values.fileSize, size <= 8_000_000,
+                      let data = try? Data(contentsOf: url), let (png, _) = safePNG(data) else { return }
+                Task { @MainActor in stage(item, result: Pending(png: png, source: url.lastPathComponent, custom: true, display: hasTransparentPixels(png) ? .systemTile : .fullTile)) }
+            }
+            return true
+        }
+        if provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
+            provider.loadDataRepresentation(forTypeIdentifier: UTType.image.identifier) { data, _ in
+                guard let data, let (png, _) = safePNG(data) else { return }
+                Task { @MainActor in stage(item, result: Pending(png: png, source: l10n("Importuj grafikę"), custom: true, display: hasTransparentPixels(png) ? .systemTile : .fullTile)) }
+            }
+            return true
+        }
+        return false
+    }
     func toggleMarked(_ host: String, _ value: Bool) {
         if value { marked.insert(host) } else { marked.remove(host) }
     }
     func siteRow(_ site: Site) -> some View {
-        HStack(spacing: 10) {
-            Toggle("", isOn: Binding(get: { marked.contains(site.host) }, set: { toggleMarked(site.host, $0) }))
-                .toggleStyle(.checkbox).labelsHidden().disabled(busy || !site.registered)
-                .help(l10n("Zaznacz ikonę do operacji zbiorczych"))
-            tile(site.existing, fallback: site.title, size: 36)
-            VStack(alignment: .leading) {
-                Text(site.title).lineLimit(1)
-                Text(site.host).font(.caption).foregroundStyle(.secondary)
-            }
-            Spacer()
-            Text(pending[site.host] != nil ? l10n("Gotowa") : (customHosts.contains(site.host) ? l10n("Własna") : site.status))
-                .font(.caption).foregroundStyle(pending[site.host] != nil ? Color.green : Color.secondary)
-        }
+        Button { selectSite(site) } label: {
+            HStack(spacing: 10) {
+                safariTile(site, size: 36, after: true)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(site.title).lineLimit(1)
+                    Text(site.host).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
+                Spacer()
+                Text(pending[site.host] != nil ? l10n("Gotowa") : (customHosts.contains(site.host) ? l10n("Własna") : site.status))
+                    .font(.caption).foregroundStyle(pending[site.host] != nil ? Color.green : Color.secondary)
+            }.padding(9).background(marked.contains(site.host) ? purple.opacity(0.16) : Color.clear, in: RoundedRectangle(cornerRadius: 8)).contentShape(Rectangle())
+        }.buttonStyle(.plain).accessibilityLabel(site.title).accessibilityAddTraits(marked.contains(site.host) ? .isSelected : [])
+        .contextMenu { siteMenu(site) }
+        .onDrop(of: [UTType.fileURL, UTType.image], isTargeted: nil) { acceptDrop($0, onto: site) }
     }
     func cacheDetails(_ site: Site) -> String {
         let flags = site.downloadFlags.map { String($0) } ?? l10n("brak")
@@ -456,28 +629,39 @@ func fetchIcon(_ host: String) async -> Pending? {
         let display = site.displayCode.map { code in SafariIconDisplay(rawValue: code)?.label ?? l10n("Kod {0}", String(describing: code)) } ?? l10n("Nieznany")
         return l10n("Cache: {0} · aktywna: {1} · status: {2} · styl: {3}", String(describing: size), String(describing: site.active ? l10n("tak") : l10n("nie")), String(describing: flags), String(describing: display))
     }
-    func choose(_ s: Site) { let panel = NSOpenPanel(); panel.allowedContentTypes = [.image]; panel.canChooseDirectories = false; guard panel.runModal() == .OK, let url = panel.url else { return }; do { let data = try Data(contentsOf: url); guard let (png,_) = safePNG(data) else { throw fail(l10n("Nieobsługiwany lub uszkodzony obraz (limit 8 MB).")) }; pending[s.host] = Pending(png: png,source:url.lastPathComponent, custom: true, display: hasTransparentPixels(png) ? .systemTile : .fullTile); if s.existing != nil { replacements.insert(s.host) }; message = l10n("Przygotowano własną ikonę. Zmiana wymaga zatwierdzenia.") } catch { message = error.localizedDescription } }
+    func choose(_ s: Site) {
+        let panel = NSOpenPanel(); panel.allowedContentTypes = [.image]; panel.canChooseDirectories = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            guard let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize, size <= 8_000_000,
+                  let (png, _) = safePNG(try Data(contentsOf: url)) else { throw fail(l10n("Nieobsługiwany lub uszkodzony obraz (limit 8 MB).")) }
+            stage(s, result: Pending(png: png, source: url.lastPathComponent, custom: true, display: hasTransparentPixels(png) ? .systemTile : .fullTile))
+        } catch { message = error.localizedDescription }
+    }
     func write() {
         guard !permissionDenied else { showPermission = true; return }
         let batch = scopedPending
         do {
             let (backup,count) = try store.apply(batch,allowingReplacement:replacements,scope:scope)
             for host in batch.keys { pending.removeValue(forKey:host); replacements.remove(host); marked.remove(host) }
+            undoPending = nil
             scan(); message = l10n("Zapisano {0} ikon. Kopia: {1}. Otwórz Safari i sprawdź efekt.", String(describing: count), String(describing: backup.lastPathComponent))
         } catch { handleOperationError(error) }
     }
     func selectBackup() { let p = NSOpenPanel(); p.directoryURL = store.backups; p.canChooseDirectories = true; p.canChooseFiles = false; guard p.runModal() == .OK, let u = p.url else {return}; chosenBackup = u; confirmRestore = true }
     func tile(_ data: Data?, fallback: String, size: CGFloat) -> some View { Group { if let data, let image = NSImage(data:data) { Image(nsImage:image).resizable().scaledToFit() } else { ZStack { RoundedRectangle(cornerRadius:size*0.22).fill(.gray.opacity(0.2)); Text(fallback.prefix(1).uppercased()).font(.system(size:size*0.45,weight:.medium)).foregroundStyle(.secondary) } } }.frame(width:size,height:size) }
-    private var purple: Color { Color(red: 0.55, green: 0.34, blue: 0.91) }
+    private var purple: Color { Color(red: 137.0/255, green: 96.0/255, blue: 232.0/255) }
     private var surface: Color { Color(nsColor: .controlBackgroundColor) }
-    private func scopeButton(_ label: String, symbol: String, value: FavoriteScope, depth: Int = 0) -> some View {
-        Button { scope = value; filter = l10n("Wszystkie") } label: {
+    private func scopeButton(_ label: String, symbol: String, value: FavoriteScope, depth: Int = 0, status: String? = nil, count: Int? = nil) -> some View {
+        let active = scope == value && filter == (status ?? l10n("Wszystkie"))
+        return Button { clearSelection(); scope = value; filter = status ?? l10n("Wszystkie"); previewMode = false } label: {
             HStack(spacing: 8) {
-                Image(systemName: symbol).foregroundStyle(scope == value ? purple : Color.secondary).frame(width: 17)
+                Image(systemName: symbol).foregroundStyle(active ? purple : Color.secondary).frame(width: 17)
                 Text(label).font(.callout).lineLimit(1).truncationMode(.tail)
                 Spacer(minLength: 0)
+                if let count { Text("\(count)").font(.caption.monospacedDigit()).foregroundStyle(.secondary) }
             }.padding(.vertical, 7).padding(.horizontal, 9).padding(.leading, CGFloat(min(depth, 3)) * 9)
-                .background(scope == value ? purple.opacity(0.15) : Color.clear, in: RoundedRectangle(cornerRadius: 7))
+                .background(active ? purple.opacity(0.15) : Color.clear, in: RoundedRectangle(cornerRadius: 7))
                 .contentShape(Rectangle())
         }.buttonStyle(.plain).help(label).disabled(busy || permissionDenied)
     }
@@ -491,8 +675,11 @@ func fetchIcon(_ host: String) async -> Pending? {
                 }
             }.padding(.bottom, 4)
             Text(l10n("BIBLIOTEKA")).font(.caption2.weight(.semibold)).tracking(1.1).foregroundStyle(.secondary)
+            scopeButton(l10n("Wszystkie Ulubione"), symbol: "square.grid.2x2", value: .all, count: sites.count)
+            scopeButton(l10n("Do sprawdzenia"), symbol: "exclamationmark.circle", value: .all, status: l10n("Brakujące"), count: sites.filter { $0.needsRepair }.count)
+            scopeButton(l10n("Własne"), symbol: "sparkle", value: .all, status: l10n("Własne"), count: customHosts.count)
+            scopeButton(l10n("Gotowe"), symbol: "checkmark.circle", value: .all, status: l10n("Gotowe"), count: pending.count)
             scopeButton(l10n("Bez folderu"), symbol: "star", value: .root)
-            scopeButton(l10n("Wszystkie Ulubione"), symbol: "square.grid.2x2", value: .all)
             Text(l10n("FOLDERY")).font(.caption2.weight(.semibold)).tracking(1.1).foregroundStyle(.secondary).padding(.top, 5)
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 2) {
@@ -509,38 +696,27 @@ func fetchIcon(_ host: String) async -> Pending? {
             } label: { Label(l10n("Otwórz Safari"), systemImage: "safari") }.buttonStyle(.plain)
             Button { showAbout = true } label: { Label(l10n("O aplikacji"), systemImage: "info.circle") }.buttonStyle(.plain)
 
-        }.padding(12).frame(width: 180).frame(maxHeight: .infinity, alignment: .topLeading)
+        }.padding(12).frame(minWidth: 170, idealWidth: 205, maxWidth: 270, maxHeight: .infinity, alignment: .topLeading)
             .background(.regularMaterial)
     }
-    private func metric(_ count: Int, _ name: String, _ symbol: String, _ color: Color) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: symbol).font(.system(size: 14, weight: .medium)).foregroundStyle(color)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("\(count)").font(.system(size: 20, weight: .semibold, design: .rounded)).monospacedDigit()
-                Text(name).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
-            }
-            Spacer(minLength: 0)
-        }.padding(9).frame(maxWidth: .infinity, alignment: .leading)
-            .background(surface.opacity(0.8), in: RoundedRectangle(cornerRadius: 10))
-            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.secondary.opacity(0.13)))
-    }
     private var header: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .center, spacing: 8) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(scopeLabel).font(.system(size: 24, weight: .semibold)).lineLimit(1)
-                    Text(l10n("Zarządzaj ikonami na stronie startowej Safari")).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center, spacing: 9) {
+                Button { showSidebar.toggle() } label: { Image(systemName: "sidebar.left") }.help(l10n("Pasek boczny"))
+                Spacer(minLength: 0)
+                Button(action: scan) { Image(systemName: "arrow.clockwise") }.help(l10n("Przeskanuj Ulubione")).disabled(busy)
+                Button { showInspector.toggle() } label: { Image(systemName: "sidebar.right") }.help(l10n("Panel edycji"))
+            }.buttonStyle(.borderless)
+            HStack(alignment: .center) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(scope == .all && filter != l10n("Wszystkie") ? (filter == l10n("Brakujące") ? l10n("Do sprawdzenia") : filter) : scopeLabel).font(.system(size: 28, weight: .semibold)).lineLimit(1)
+                    Text(l10n("{0} stron · {1} do sprawdzenia", String(scoped.count), String(scoped.filter { $0.needsRepair }.count)))
+                        .font(.callout).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Spacer(minLength: 5)
-                Button(action: scan) { Image(systemName: "arrow.clockwise") }.help(l10n("Przeskanuj Ulubione")).disabled(busy)
-                Button { confirm = true } label: { Label(l10n("Zastosuj ({0})", String(describing: scopedPending.count)), systemImage: "checkmark") }
-                    .buttonStyle(.borderedProminent).disabled(busy || permissionDenied || scopedPending.isEmpty)
-            }
-            HStack(spacing: 8) {
-                metric(scoped.count, l10n("Domeny"), "square.grid.2x2", purple)
-                metric(scoped.filter { $0.existing != nil }.count, l10n("W cache"), "photo", .secondary)
-                metric(scoped.filter { $0.needsRepair }.count, l10n("Do sprawdzenia"), "exclamationmark.circle", .orange)
-                metric(scopedPending.count, l10n("Gotowe"), "checkmark.circle", .green)
+                Button(action: prepare) { Label(l10n("Szybka naprawa"), systemImage: "wand.and.stars") }
+                    .buttonStyle(.borderedProminent).help(l10n("Przygotuj brakujące i nieaktywne ikony. Zatwierdź przed zapisem."))
+                    .disabled(busy || permissionDenied || missing.isEmpty)
             }
         }.fixedSize(horizontal: false, vertical: true)
     }
@@ -552,114 +728,170 @@ func fetchIcon(_ host: String) async -> Pending? {
         } label: { Label(l10n("Przywróć domyślne"), systemImage: "arrow.uturn.backward") }.disabled(busy || permissionDenied)
     }
     private var controls: some View {
-        VStack(alignment: .leading, spacing: 9) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
-                HStack(spacing: 6) {
+                Picker(l10n("Widok"), selection: $previewMode) {
+                    Text(l10n("Ikony")).tag(false); Text(l10n("Podgląd Safari")).tag(true)
+                }.labelsHidden().pickerStyle(.segmented).frame(maxWidth: 270)
+                Spacer(minLength: 0)
+                if !previewMode {
+                    Picker(l10n("Widok"), selection: $gridMode) {
+                        Image(systemName: "square.grid.2x2").tag(true); Image(systemName: "list.bullet").tag(false)
+                    }.pickerStyle(.segmented).labelsHidden().frame(width: 70)
+                    Menu { Button("48") { iconSize = 48 }; Button("62") { iconSize = 62 }; Button("80") { iconSize = 80 } } label: { Image(systemName: "textformat.size") }.help(l10n("Rozmiar ikon"))
+                }
+            }
+            HStack(spacing: 8) {
+                HStack(spacing: 7) {
                     Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
                     TextField(l10n("Szukaj strony…"), text: $search).textFieldStyle(.plain)
                     if !search.isEmpty { Button { search = "" } label: { Image(systemName: "xmark.circle.fill") }.buttonStyle(.plain).foregroundStyle(.secondary) }
                 }.padding(8).background(surface, in: RoundedRectangle(cornerRadius: 8))
-                Picker(l10n("Status"), selection: $filter) {
-                    ForEach([l10n("Wszystkie"), l10n("Brakujące"), l10n("Gotowe"), l10n("Własne")], id: \.self) { Text($0).tag($0) }
-                }.labelsHidden().frame(width: 132)
-                Picker(l10n("Widok"), selection: $gridMode) {
-                    Image(systemName: "square.grid.2x2").tag(true)
-                    Image(systemName: "list.bullet").tag(false)
-                }.pickerStyle(.segmented).labelsHidden().frame(width: 76)
+                Picker(l10n("Status"), selection: $filter) { ForEach([l10n("Wszystkie"), l10n("Brakujące"), l10n("Gotowe"), l10n("Własne")], id: \.self) { Text($0).tag($0) } }.labelsHidden().frame(maxWidth: 145)
             }
-            HStack(spacing: 7) {
-                Menu {
-                    Button(l10n("Zaznacz widoczne")) { marked.formUnion(shown.filter { $0.registered }.map { $0.host }) }
-                    Button(l10n("Odznacz w zakresie")) { marked.subtract(scoped.map { $0.host }) }
-                } label: { Label(l10n("Zaznaczenie ({0})", String(describing: markedSites.count)), systemImage: "checkmark.square") }.disabled(busy)
-                Spacer(minLength: 0)
-                Button(action: prepare) { Image(systemName: "arrow.down.circle") }.help(l10n("Pobierz brakujące ikony")).disabled(busy || permissionDenied || missing.isEmpty)
-                Button(action: prepareMarked) { Label(l10n("Napraw wyświetlanie"), systemImage: "wand.and.stars") }.help(l10n("Zachowaj obecną ikonę; gdy jej brakuje, spróbuj ją pobrać. Zapisz przez Zastosuj.")).disabled(busy || markedSites.isEmpty)
-                Menu {
-                    Button(l10n("Pełny kafelek — bez szarej ramki")) { prepareDisplay(markedSites, style: .fullTile) }
-                    Button(l10n("Tło systemowe")) { prepareDisplay(markedSites, style: .systemTile) }
-                } label: { Label(l10n("Styl"), systemImage: "square.inset.filled") }.disabled(busy || markedSites.isEmpty)
-                resetMenu
-            }.controlSize(.small)
+            if !previewMode { selectionBar }
         }.fixedSize(horizontal: false, vertical: true)
     }
-    private func iconCard(_ s: Site) -> some View {
-        VStack(alignment: .leading, spacing: 7) {
-            HStack {
-                Toggle("", isOn: Binding(get: { marked.contains(s.host) }, set: { toggleMarked(s.host, $0) }))
-                    .toggleStyle(.checkbox).labelsHidden().disabled(busy || !s.registered)
-                Spacer()
-                Image(systemName: pending[s.host] != nil ? "checkmark.circle.fill" : (s.needsRepair ? "exclamationmark.circle" : (customHosts.contains(s.host) ? "sparkle" : "circle.fill")))
-                    .font(.caption).foregroundStyle(pending[s.host] != nil ? Color.green : (s.needsRepair ? Color.orange : (customHosts.contains(s.host) ? purple : Color.secondary.opacity(0.45))))
+    private var selectionBar: some View {
+        HStack(spacing: 8) {
+            Menu {
+                Button(l10n("Zaznacz widoczne"), action: selectAllVisible)
+                Button(l10n("Odznacz w zakresie"), action: clearSelection)
+            } label: { Label(l10n("Zaznaczenie ({0})", String(markedSites.count)), systemImage: "checkmark.square") }
+            Spacer(minLength: 0)
+            if !markedSites.isEmpty {
+                Button(action: prepareMarked) { Image(systemName: "arrow.clockwise") }.help(l10n("Napraw wyświetlanie"))
+                Menu {
+                    ForEach(StudioPreset.allCases, id: \.self) { preset in Button(preset.label) { preparePreset(preset, targets: markedSites) } }
+                    Divider()
+                    Button(l10n("Pełny kafelek — bez szarej ramki")) { prepareDisplay(markedSites, style: .fullTile) }
+                    Button(l10n("Tło systemowe")) { prepareDisplay(markedSites, style: .systemTile) }
+                } label: { Label("Color Studio", systemImage: "paintpalette") }
+                resetMenu
+            } else {
+                Text(l10n("⌘ lub ⇧, aby zaznaczyć więcej ikon")).font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
-            Button { selected = s.host } label: {
-                VStack(spacing: 7) {
-                    tile(pending[s.host]?.png ?? s.existing, fallback: s.title, size: 56).clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    Text(s.title).font(.callout.weight(.medium)).lineLimit(1)
-                    Text(s.host).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
-                }.frame(maxWidth: .infinity).contentShape(Rectangle())
-            }.buttonStyle(.plain).help(s.title + " — " + s.status)
-        }.padding(9).background(selected == s.host ? purple.opacity(0.12) : surface, in: RoundedRectangle(cornerRadius: 12))
-            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(selected == s.host ? purple : Color.secondary.opacity(0.14), lineWidth: selected == s.host ? 1.5 : 1))
-            .onTapGesture { selected = s.host }
+        }.controlSize(.small).disabled(busy)
+    }
+    private func safariTile(_ item: Site, size: CGFloat, after: Bool) -> some View {
+        let data = after ? (pending[item.host]?.png ?? item.existing) : item.existing
+        let style = after ? (pending[item.host]?.display?.rawValue ?? item.displayCode) : item.displayCode
+        let full = style == SafariIconDisplay.fullTile.rawValue
+        return ZStack {
+            RoundedRectangle(cornerRadius: size * 0.22, style: .continuous).fill(Color(white: 0.50))
+            if let data, let image = NSImage(data: data) { Image(nsImage: image).resizable().scaledToFit().frame(width: full ? size : size * 0.83, height: full ? size : size * 0.83) }
+            else { Text(item.title.prefix(1).uppercased()).font(.system(size: size * 0.43, weight: .medium)).foregroundStyle(.white) }
+        }.frame(width: size, height: size).clipShape(RoundedRectangle(cornerRadius: size * 0.22, style: .continuous))
+    }
+    @ViewBuilder private func siteMenu(_ item: Site) -> some View {
+        Button(l10n("Personalizuj ikonę")) { iconEditor = item }.disabled(!item.registered || busy)
+        Button(l10n("Napraw wyświetlanie")) { prepareSites([item]) }.disabled(!item.registered || busy)
+        Button(l10n("Importuj grafikę")) { choose(item) }.disabled(!item.registered || busy)
+        Button(l10n("Podgląd")) { quickLook = item }
+        Button(l10n("Historia ikony")) { openHistory(item) }
+        Divider()
+        Button(l10n("Przywróć domyślną ikonę Safari"), role: .destructive) { requestReset([item.host], in: scope) }.disabled(!item.registered || busy)
+    }
+    private func iconCard(_ item: Site) -> some View {
+        let isSelected = marked.contains(item.host)
+        return Button { selectSite(item) } label: {
+            VStack(spacing: 7) {
+                ZStack(alignment: .topTrailing) {
+                    safariTile(item, size: CGFloat(iconSize), after: true).shadow(color: .black.opacity(0.12), radius: 3, y: 2)
+                    if pending[item.host] != nil || item.needsRepair || customHosts.contains(item.host) {
+                        Image(systemName: pending[item.host] != nil ? "checkmark.circle.fill" : (item.needsRepair ? "exclamationmark.circle.fill" : "sparkle"))
+                            .font(.system(size: 12, weight: .semibold)).foregroundStyle(pending[item.host] != nil ? Color.green : (item.needsRepair ? .orange : purple))
+                            .padding(3).background(surface, in: Circle()).offset(x: 5, y: -5)
+                    }
+                }
+                Text(item.title).font(.callout.weight(.medium)).lineLimit(1)
+            }.padding(.vertical, 10).padding(.horizontal, 4).frame(maxWidth: .infinity)
+                .background(isSelected ? purple.opacity(0.15) : Color.clear, in: RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(isSelected ? purple.opacity(0.75) : Color.clear, lineWidth: 1.2))
+                .contentShape(Rectangle())
+        }.buttonStyle(.plain).help(item.title + " · " + item.status).accessibilityLabel(item.title + ", " + item.status)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .contextMenu { siteMenu(item) }
+        .onDrop(of: [UTType.fileURL, UTType.image], isTargeted: nil) { acceptDrop($0, onto: item) }
+    }
+    private var safariPreview: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Picker(l10n("Podgląd"), selection: $previewAfter) { Text(l10n("Przed")).tag(false); Text(l10n("Po zmianie")).tag(true) }.pickerStyle(.segmented).labelsHidden().frame(maxWidth: 230)
+                Spacer()
+                Button { storedPreviewDark.toggle() } label: { Image(systemName: storedPreviewDark ? "sun.max" : "moon") }.help(l10n("Zmień motyw podglądu"))
+            }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    HStack(spacing: 5) {
+                        ForEach([Color.red, Color.yellow, Color.green], id: \.self) { tint in Circle().fill(tint).frame(width: 9, height: 9) }
+                        Spacer(); RoundedRectangle(cornerRadius: 5).fill(.gray.opacity(0.25)).frame(width: 115, height: 15); Spacer()
+                    }
+                    Text(l10n("Ulubione")).font(.title2.weight(.semibold))
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 80), spacing: 13)], spacing: 18) {
+                        ForEach(shown) { item in
+                            VStack(spacing: 7) { safariTile(item, size: 58, after: previewAfter); Text(item.title).font(.caption).lineLimit(2).multilineTextAlignment(.center) }
+                        }
+                    }
+                }.padding(20).foregroundStyle(storedPreviewDark ? Color.white : Color.black)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }.background(storedPreviewDark ? Color(red: 0.16, green: 0.16, blue: 0.18) : Color(white: 0.94), in: RoundedRectangle(cornerRadius: 13))
+            Text(l10n("Symulacja wyglądu, nie zrzut Safari. Kolejność może się różnić.")).font(.caption).foregroundStyle(.secondary)
+        }.padding(3)
     }
     private var library: some View {
         VStack(spacing: 0) {
             if shown.isEmpty {
-                VStack(spacing: 9) {
-                    Image(systemName: "square.grid.2x2").font(.system(size: 29)).foregroundStyle(.secondary)
+                VStack(spacing: 12) {
+                    Image(systemName: "square.grid.2x2").font(.system(size: 36, weight: .light)).foregroundStyle(purple)
                     Text(l10n("Brak ikon w tym widoku")).font(.headline)
                     Text(l10n("Zmień filtr lub zakres Ulubionych.")).font(.caption).foregroundStyle(.secondary)
+                    Button(l10n("Wszystkie")) { scope = .all; filter = l10n("Wszystkie"); search = "" }
                 }.frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if gridMode {
-                ScrollView {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 9)], spacing: 9) {
-                        ForEach(shown) { s in iconCard(s) }
-                    }.padding(2)
-                }
+            } else if previewMode { safariPreview }
+            else if gridMode {
+                ScrollView { LazyVGrid(columns: [GridItem(.adaptive(minimum: max(90, iconSize + 24)), spacing: 9)], spacing: 10) { ForEach(shown) { iconCard($0) } }.padding(4) }
             } else {
-                List(shown, selection: $selected) { s in siteRow(s).tag(s.host) }
-                    .listStyle(.plain)
+                ScrollView { LazyVStack(spacing: 2) { ForEach(shown) { siteRow($0) } }.padding(2) }
             }
-        }.frame(minWidth: 320, maxWidth: .infinity, maxHeight: .infinity)
+        }.frame(minWidth: 330, maxWidth: .infinity, maxHeight: .infinity)
     }
-    @ViewBuilder private func detail(_ s: Site) -> some View {
+    @ViewBuilder private func detail(_ item: Site) -> some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(l10n("EDYTOR IKONY")).font(.caption2.weight(.semibold)).tracking(1.1).foregroundStyle(.secondary)
-            VStack(spacing: 8) {
-                tile(pending[s.host]?.png ?? s.existing, fallback: s.title, size: 100)
-                    .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous)).shadow(color: .black.opacity(0.12), radius: 8, y: 4)
-                Text(s.title).font(.headline).lineLimit(2).multilineTextAlignment(.center)
-                Text(s.host).font(.caption).foregroundStyle(.secondary).textSelection(.enabled).lineLimit(2)
-            }.frame(maxWidth: .infinity).padding(.vertical, 10)
-            if pending[s.host] != nil {
-                HStack { Image(systemName: "checkmark.circle.fill").foregroundStyle(.green); Text(l10n("Gotowa do zapisania")).font(.caption) }
+            HStack {
+                Text(l10n("EDYTOR IKONY")).font(.caption2.weight(.semibold)).tracking(1.1).foregroundStyle(.secondary)
+                Spacer(); Button { quickLook = item } label: { Image(systemName: "eye") }.buttonStyle(.borderless).help(l10n("Podgląd"))
             }
-            Button { iconEditor = s } label: { Label(l10n("Personalizuj ikonę"), systemImage: "wand.and.stars").frame(maxWidth: .infinity) }
-                 .buttonStyle(.borderedProminent).controlSize(.large).disabled(busy || !s.registered)
-            Text(l10n("Zmień grafikę, tło i rozmiar logo.")).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            Button { prepareSites([s]) } label: { Label(l10n("Napraw wyświetlanie"), systemImage: "arrow.clockwise").frame(maxWidth: .infinity, alignment: .leading) }.disabled(busy || !s.registered)
+            HStack(spacing: 12) {
+                safariTile(item, size: 72, after: true)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(item.title).font(.headline).lineLimit(2)
+                    Text(item.host).font(.caption).foregroundStyle(.secondary).lineLimit(2).textSelection(.enabled)
+                    Text(pending[item.host] != nil ? l10n("Gotowa do zapisania") : (customHosts.contains(item.host) ? l10n("Własna ikona") : item.status)).font(.caption2).foregroundStyle(.secondary)
+                }
+            }
+            if let data = pending[item.host]?.png ?? item.existing {
+                InlineIconStudio(data: data) { png, display in stage(item, result: Pending(png: png, source: "Color Studio", custom: true, display: display)) }
+                    .id(item.host + iconDigest(data)).disabled(!item.registered || busy)
+                Divider()
+            }
+            Button { iconEditor = item } label: { Label(l10n("Personalizuj ikonę"), systemImage: "magnifyingglass").frame(maxWidth: .infinity) }.buttonStyle(.borderedProminent).controlSize(.large).disabled(busy || !item.registered)
+            Button { choose(item) } label: { Label(l10n("Importuj grafikę"), systemImage: "square.and.arrow.down").frame(maxWidth: .infinity, alignment: .leading) }.disabled(busy || !item.registered)
+            Button { prepareSites([item]) } label: { Label(l10n("Napraw wyświetlanie"), systemImage: "arrow.clockwise").frame(maxWidth: .infinity, alignment: .leading) }.disabled(busy || !item.registered)
             Text(l10n("Zachowaj obecną ikonę; gdy jej brakuje, spróbuj ją pobrać. Zapisz przez Zastosuj.")).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            Button { choose(s) } label: { Label(l10n("Importuj grafikę"), systemImage: "square.and.arrow.down").frame(maxWidth: .infinity, alignment: .leading) }.disabled(busy || !s.registered)
-            Menu {
-                Button(l10n("Pełny kafelek — bez szarej ramki")) { prepareDisplay([s], style: .fullTile) }
-                Button(l10n("Tło systemowe")) { prepareDisplay([s], style: .systemTile) }
-            } label: { Label(l10n("Styl w Safari"), systemImage: "square.inset.filled").frame(maxWidth: .infinity, alignment: .leading) }.disabled(busy || !s.registered || (pending[s.host] == nil && s.existing == nil))
-            if pending[s.host] != nil {
-                Button(l10n("Odrzuć zmianę")) { pending.removeValue(forKey: s.host); replacements.remove(s.host) }.disabled(busy)
-            }
+            if pending[item.host] != nil { Button(l10n("Odrzuć zmianę")) { rememberDraft(); pending.removeValue(forKey: item.host); replacements.remove(item.host) }.disabled(busy) }
             Divider()
-            VStack(alignment: .leading, spacing: 6) {
-                Text(l10n("Informacje")).font(.headline)
-                Text(customHosts.contains(s.host) ? l10n("Własna ikona") : s.status).font(.callout)
-                Text(cacheDetails(s)).font(.caption).foregroundStyle(.secondary)
-                Text(Array(Set(s.locations.map { $0.folderTitles.isEmpty ? l10n("Bez folderu") : $0.folderTitles.joined(separator: " / ") })).sorted().joined(separator: " · ")).font(.caption).foregroundStyle(.secondary).lineLimit(3)
-                if s.locations.contains(where: { !scope.includes($0.folder) }) { Text(l10n("Wspólna ikona także poza tym zakresem.")).font(.caption).foregroundStyle(.orange) }
-                if let p = pending[s.host] { Text(p.source).font(.caption).foregroundStyle(.secondary).lineLimit(2) }
-                if !s.registered { Text(l10n("Otwórz stronę w Safari i przeskanuj ponownie.")).font(.caption).foregroundStyle(.secondary) }
+            Button { openHistory(item) } label: { Label(l10n("Historia ikony"), systemImage: "clock.arrow.circlepath").frame(maxWidth: .infinity, alignment: .leading) }.disabled(busy)
+            DisclosureGroup(l10n("Informacje"), isExpanded: $showTechnical) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(cacheDetails(item)).font(.caption).foregroundStyle(.secondary)
+                    Text(Array(Set(item.locations.map { $0.folderTitles.isEmpty ? l10n("Bez folderu") : $0.folderTitles.joined(separator: " / ") })).sorted().joined(separator: " · ")).font(.caption).foregroundStyle(.secondary)
+                    if let p = pending[item.host] { Text(p.source).font(.caption).foregroundStyle(.secondary).lineLimit(2) }
+                }.padding(.top, 5)
             }
-            Button(role: .destructive) { requestReset([s.host], in: scope) } label: { Label(l10n("Przywróć domyślną ikonę Safari"), systemImage: "arrow.uturn.backward") }.buttonStyle(.plain).foregroundStyle(.red).disabled(busy || !s.registered)
-            Text(l10n("Usuń personalizację i pozwól Safari pobrać ikonę od nowa.")).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            if item.locations.contains(where: { !scope.includes($0.folder) }) { Text(l10n("Wspólna ikona także poza tym zakresem.")).font(.caption).foregroundStyle(.orange) }
+            if !item.registered { Text(l10n("Otwórz stronę w Safari i przeskanuj ponownie.")).font(.caption).foregroundStyle(.secondary) }
+            Button(role: .destructive) { requestReset([item.host], in: scope) } label: { Label(l10n("Przywróć domyślną ikonę Safari"), systemImage: "arrow.uturn.backward").fixedSize(horizontal: false, vertical: true) }.buttonStyle(.plain).foregroundStyle(.red).disabled(busy || !item.registered)
         }.frame(maxWidth: .infinity, alignment: .topLeading)
     }
     private var inspector: some View {
@@ -672,14 +904,24 @@ func fetchIcon(_ host: String) async -> Pending? {
                     Text(l10n("Zmieniaj obraz, tło i margines w edytorze.")).font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 }.frame(maxWidth: .infinity).padding(.top, 40)
             }
-        }.padding(14).frame(width: 254).frame(maxHeight: .infinity).background(.regularMaterial)
+        }.padding(16).frame(minWidth: 255, idealWidth: 305, maxWidth: 400, maxHeight: .infinity).background(.regularMaterial)
     }
     private var footer: some View {
-        HStack(spacing: 7) {
-            if busy { ProgressView().controlSize(.small) } else { Image(systemName: "info.circle").foregroundStyle(.secondary) }
-            Text(message).font(.caption).foregroundStyle(.secondary).lineLimit(2).help(message).textSelection(.enabled)
-            Spacer(minLength: 0)
-            Text(l10n("{0} zmian", String(describing: pending.count))).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 7) {
+                if busy { ProgressView().controlSize(.small) } else { Image(systemName: "info.circle").foregroundStyle(.secondary) }
+                Text(message).font(.caption).foregroundStyle(.secondary).lineLimit(2).help(message).textSelection(.enabled)
+                Spacer(minLength: 0)
+            }
+            if !pending.isEmpty || undoPending != nil {
+                HStack(spacing: 8) {
+                    Button { clearSelection(); scope = .all; filter = l10n("Gotowe"); search = ""; previewMode = false } label: { Text(l10n("{0} zmian", String(pending.count))).font(.callout.weight(.medium)).foregroundStyle(purple) }.buttonStyle(.plain).disabled(pending.isEmpty || busy)
+                    Spacer(minLength: 0)
+                    Button { undoDraft() } label: { Image(systemName: "arrow.uturn.backward") }.help(l10n("Cofnij przygotowaną zmianę")).disabled(undoPending == nil || busy)
+                    Button(l10n("Odrzuć zmianę")) { confirmDiscard = true }.disabled(scopedPending.isEmpty || busy)
+                    Button(l10n("Zastosuj ({0})", String(scopedPending.count))) { confirm = true }.buttonStyle(.borderedProminent).disabled(busy || permissionDenied || scopedPending.isEmpty)
+                }.padding(9).background(purple.opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
+            }
         }.fixedSize(horizontal: false, vertical: true)
     }
     private var permissionSheet: some View {
@@ -716,22 +958,20 @@ func fetchIcon(_ host: String) async -> Pending? {
         .frame(width: 520)
     }
     var body: some View {
-        HStack(spacing: 0) {
-            sidebar
-            Divider()
+        HSplitView {
+            if showSidebar { sidebar }
             VStack(alignment: .leading, spacing: 13) {
                 header
                 controls.disabled(permissionDenied)
-                library.layoutPriority(1).disabled(permissionDenied)
+                library.layoutPriority(1).disabled(permissionDenied || busy)
                 Divider()
                 footer
-            }.padding(14).frame(maxWidth: .infinity, maxHeight: .infinity)
-            Divider()
-            inspector.disabled(permissionDenied)
+            }.padding(18).frame(minWidth: 365, idealWidth: 540, maxWidth: .infinity, maxHeight: .infinity)
+            if showInspector { inspector.disabled(permissionDenied) }
         }
-        .frame(minWidth: 900, minHeight: 510)
+        .frame(minWidth: 850, minHeight: 500)
         .tint(purple)
-        .onAppear(perform: scan)
+        .onAppear { filter = filterChoices.indices.contains(storedFilter) ? filterChoices[storedFilter] : filterChoices[0]; scan() }
         .task { updates.checkAtLaunch() }
         .sheet(isPresented: $showAbout) { AppAboutView(updates: updates) }
         .onReceive(NotificationCenter.default.publisher(for: .sifAbout)) { _ in showAbout = true }
@@ -740,10 +980,7 @@ func fetchIcon(_ host: String) async -> Pending? {
         }
         .sheet(item: $iconEditor) { site in
             IconSearchView(host: site.host, title: site.names.first ?? site.host, existing: pending[site.host]?.png ?? site.existing) { result in
-                guard scoped.contains(where: { $0.host == site.host && $0.registered }) else { return }
-                pending[site.host] = result
-                if site.existing != nil { replacements.insert(site.host) }
-                message = l10n("Przygotowano ikonę: {0}. Kliknij Zastosuj, aby zapisać.", String(describing: site.host))
+                stage(site, result: result)
             }
         }
         .sheet(isPresented: $showPermission, onDismiss: { waitingForPermission = false }) { permissionSheet }
@@ -751,7 +988,57 @@ func fetchIcon(_ host: String) async -> Pending? {
             if waitingForPermission && permissionDenied { runScan(presentPermission: false) }
             else if waitingForPermission { waitingForPermission = false }
         }
-        .onChange(of: scope) { _ in selected = nil }
+        .onChange(of: scope) { _ in clearSelection() }
+        .onChange(of: filter) { value in clearSelection(); storedFilter = filterChoices.firstIndex(of: value) ?? 0 }
+        .onChange(of: search) { _ in clearSelection() }
+        .onChange(of: pending) { _ in persistPreparedDraft() }
+        .onChange(of: busy) { value in DraftProtection.shared.busy = value; if !value { persistPreparedDraft() } }
+        .onReceive(NotificationCenter.default.publisher(for: .sifUndoDraft)) { _ in undoDraft() }
+        .onReceive(NotificationCenter.default.publisher(for: .sifSelectAll)) { _ in if !busy && !permissionDenied { selectAllVisible() } }
+        .onReceive(NotificationCenter.default.publisher(for: .sifQuickLook)) { _ in if !busy, let item = site { quickLook = item } }
+        .sheet(item: $historySite) { item in
+            VStack(alignment: .leading, spacing: 14) {
+                Text(l10n("Historia ikony")).font(.title2.bold())
+                Text(item.title).foregroundStyle(.secondary)
+                if historyEntries.isEmpty { Text(l10n("Brak wcześniejszych grafik w kopiach zapasowych.")).padding(.vertical, 20) }
+                else {
+                    ScrollView {
+                        LazyVStack(spacing: 8) {
+                            ForEach(historyEntries) { version in
+                                HStack(spacing: 12) {
+                                    tile(version.png, fallback: item.title, size: 48).clipShape(RoundedRectangle(cornerRadius: 10))
+                                    VStack(alignment: .leading) {
+                                        Text(version.date, style: .date).font(.callout.weight(.medium))
+                                        Text(version.date, style: .time).font(.caption).foregroundStyle(.secondary)
+                                        if let style = version.style { Text(style.label).font(.caption2).foregroundStyle(.secondary) }
+                                    }
+                                    Spacer()
+                                    Button(l10n("Przygotuj zmianę")) {
+                                        if let (png, _) = safePNG(version.png) { stage(item, result: Pending(png: version.png.starts(with: [137,80,78,71,13,10,26,10]) ? version.png : png, source: l10n("Historia ikony"), custom: true, display: version.style)); historySite = nil }
+                                    }.disabled(!item.registered || busy)
+                                }.padding(9).background(surface, in: RoundedRectangle(cornerRadius: 10))
+                            }
+                        }
+                    }.frame(maxHeight: 310)
+                }
+                Text(l10n("Historia z lokalnych kopii zapasowych. Przywracasz tylko tę ikonę po zatwierdzeniu.")).font(.caption).foregroundStyle(.secondary)
+                HStack { Spacer(); Button(l10n("Zamknij")) { historySite = nil }.keyboardShortcut(.cancelAction) }
+            }.padding(24).frame(width: 470)
+        }
+        .sheet(item: $quickLook) { item in
+            VStack(spacing: 16) {
+                HStack(spacing: 20) {
+                    VStack { safariTile(item, size: 150, after: false); Text(l10n("Przed")) }
+                    VStack { safariTile(item, size: 150, after: true); Text(l10n("Po zmianie")) }
+                }
+                Text(item.title).font(.headline)
+                Button(l10n("Zamknij")) { quickLook = nil }.keyboardShortcut(.defaultAction)
+            }.padding(25)
+        }
+        .alert(l10n("Odrzucić przygotowane zmiany?"), isPresented: $confirmDiscard) {
+            Button(l10n("Anuluj"), role: .cancel) {}
+            Button(l10n("Odrzuć zmianę"), role: .destructive) { rememberDraft(); for host in scopedPending.keys { pending.removeValue(forKey: host); replacements.remove(host) } }
+        } message: { Text(l10n("Zmiany w Safari pozostaną bez zmian. Odrzucisz tylko przygotowane ikony w tym zakresie.")) }
         .alert(l10n("Zastosować przygotowane ikony?"),isPresented:$confirm) { Button(l10n("Anuluj"),role:.cancel){}; Button(l10n("Zapisz"),action:write) } message: { Text(l10n("Zakres: {0}. Zapis: {1} ikon. Safari współdzieli ikony domen, więc zmiana może być widoczna również w innych folderach i poza Ulubionymi. Zamknij Safari przez ⌘Q. Przed zapisem powstanie kopia cache.", String(describing: scopeLabel), String(describing: scopedPending.count))) }
         .alert(l10n("Przywrócić domyślny wygląd {0} ikon?", String(describing: resetHosts.count)), isPresented: $confirmReset) {
             Button(l10n("Anuluj"), role: .cancel) {}
@@ -759,14 +1046,99 @@ func fetchIcon(_ host: String) async -> Pending? {
         } message: {
             Text(l10n("Usunie obecną grafikę i własne tło. Safari spróbuje pobrać domyślną ikonę; do tego czasu może wyświetlać literę. Dotyczy też wspólnych ikon w innych folderach. Zamknij Safari (⌘Q). Powstanie kopia. Zakładki pozostaną bez zmian."))
         }
-        .alert(l10n("Przywrócić cały cache ikon?"),isPresented:$confirmRestore) { Button(l10n("Anuluj"),role:.cancel){}; Button(l10n("Przywróć"),role:.destructive) { if let saved = chosenBackup { do { let displaced = try store.restore(saved); pending = [:]; replacements = []; marked = []; scan(); message = l10n("Przywrócono kopię. Poprzedni cache: {0}.", String(describing: displaced.lastPathComponent)) } catch {handleOperationError(error)} } } } message: { Text(l10n("Wymaga zamknięcia Safari. Bieżący folder również zostanie zachowany jako kopia.")) }
+        .alert(l10n("Przywrócić cały cache ikon?"),isPresented:$confirmRestore) { Button(l10n("Anuluj"),role:.cancel){}; Button(l10n("Przywróć"),role:.destructive) { if let saved = chosenBackup { do { let displaced = try store.restore(saved); pending = [:]; replacements = []; marked = []; undoPending = nil; scan(); message = l10n("Przywrócono kopię. Poprzedni cache: {0}.", String(describing: displaced.lastPathComponent)) } catch {handleOperationError(error)} } } } message: { Text(l10n("Wymaga zamknięcia Safari. Bieżący folder również zostanie zachowany jako kopia.")) }
     }
 }
+private enum StudioPreset: CaseIterable {
+    case white, soft, midnight, amethyst
+    var label: String { switch self { case .white: return "Original White"; case .soft: return "Soft Brand"; case .midnight: return "Midnight"; case .amethyst: return "Amethyst" } }
+    var background: IconBackground { switch self { case .white: return .white; case .soft: return .automatic; default: return .custom } }
+    var color: NSColor { switch self { case .white, .soft: return .white; case .midnight: return NSColor(srgbRed: 0.16, green: 0.15, blue: 0.19, alpha: 1); case .amethyst: return NSColor(srgbRed: 0.85, green: 0.78, blue: 0.98, alpha: 1) } }
+}
+@MainActor private struct InlineIconStudio: View {
+    let data: Data
+    let onStage: (Data, SafariIconDisplay) -> Void
+    @State private var art: IconArtwork?
+    @State private var background: IconBackground = .original
+    @State private var color: Color = .white
+    @State private var inset = 0.12
+    @State private var lightening = 0.40
+    @State private var style = 0
+    @State private var rendered: Data?
+    @State private var edited = false
+    private func render() {
+        guard let art, art.separate else { return }
+        rendered = composeArtwork(art, background: background, color: NSColor(color), inset: inset, lightening: lightening)
+        edited = true
+    }
+    private var display: SafariIconDisplay {
+        if style == 1 { return .fullTile }; if style == 2 { return .systemTile }
+        return hasTransparentPixels(rendered ?? data) ? .systemTile : .fullTile
+    }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 11) {
+            HStack {
+                Text("Color Studio").font(.headline)
+                Spacer()
+                if let img = NSImage(data: rendered ?? data) {
+                    ZStack { RoundedRectangle(cornerRadius: 13).fill(Color(white: 0.5)); Image(nsImage: img).resizable().scaledToFit().padding(display == .fullTile ? 0 : 5) }
+                        .frame(width: 56, height: 56).clipShape(RoundedRectangle(cornerRadius: 13))
+                }
+            }
+            if art?.separate == true {
+                HStack(spacing: 8) {
+                    ForEach(StudioPreset.allCases, id: \.self) { preset in
+                        Button { background = preset.background; color = Color(nsColor: preset.color); render() } label: {
+                            RoundedRectangle(cornerRadius: 7).fill(preset == .soft ? Color(nsColor: nsColor((art?.dominant ?? IconRGB(r: 128, g: 128, b: 128)).lightened(0.40))) : Color(nsColor: preset.color)).frame(width: 31, height: 27)
+                                .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Color.secondary.opacity(0.25)))
+                        }.buttonStyle(.plain).help(preset.label).accessibilityLabel(preset.label)
+                    }
+                    ColorPicker(l10n("Własny kolor"), selection: Binding(get: { color }, set: { color = $0; background = .custom; render() }), supportsOpacity: false).labelsHidden()
+                }
+                Picker(l10n("Tło"), selection: $background) { ForEach(IconBackground.allCases) { Text(l10n($0.rawValue)).tag($0) } }.onChange(of: background) { _ in render() }
+                HStack { Text(l10n("Margines logo")); Spacer(); Text("\(Int(inset * 100))%").monospacedDigit().foregroundStyle(.secondary) }.font(.caption)
+                Slider(value: $inset, in: 0...0.30, step: 0.01).onChange(of: inset) { _ in render() }
+                if background == .automatic {
+                    HStack { Text(l10n("Rozjaśnienie tła")); Spacer(); Text("\(Int(lightening * 100))%").monospacedDigit() }.font(.caption)
+                    Slider(value: $lightening, in: 0.30...0.50, step: 0.01).onChange(of: lightening) { _ in render() }
+                }
+            }
+            Picker(l10n("Styl w Safari"), selection: $style) { Text(l10n("Automatycznie")).tag(0); Text(l10n("Pełny kafelek")).tag(1); Text(l10n("Tło systemowe")).tag(2) }.onChange(of: style) { _ in edited = true }
+            Button { onStage(rendered ?? data, display) } label: { Label(l10n("Przygotuj zmianę"), systemImage: "checkmark").frame(maxWidth: .infinity) }.disabled(!edited)
+            Text(l10n("Podgląd zmienia się od razu. Safari zmieni się dopiero po zastosowaniu.")).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        }.onAppear { art = IconArtwork(data) }
+    }
+}
+@MainActor final class DraftProtection: NSObject, NSApplicationDelegate {
+    static let shared = DraftProtection()
+    var pending = 0
+    var busy = false
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        let state = DraftProtection.shared
+        if state.busy { return .terminateCancel }
+        guard state.pending > 0 else { return .terminateNow }
+        let alert = NSAlert(); alert.messageText = l10n("Zakończyć z przygotowanymi ikonami?")
+        alert.informativeText = l10n("Masz przygotowane ikony. Nie zapisano ich w Safari. Aplikacja próbuje zachować je lokalnie do następnego uruchomienia.")
+        alert.addButton(withTitle: l10n("Anuluj")); alert.addButton(withTitle: l10n("Zakończ"))
+        return alert.runModal() == .alertSecondButtonReturn ? .terminateNow : .terminateCancel
+    }
+}
+extension Notification.Name {
+    static let sifUndoDraft = Notification.Name("SIF.UndoDraft")
+    static let sifSelectAll = Notification.Name("SIF.SelectAll")
+    static let sifQuickLook = Notification.Name("SIF.QuickLook")
+}
 @main struct SafariIconFixerApp: App {
+    @NSApplicationDelegateAdaptor(DraftProtection.self) private var appDelegate
     @StateObject private var updates = AppUpdates.shared
     var body: some Scene {
-        WindowGroup { MainView() }.defaultSize(width: 1040, height: 640).windowResizability(.contentMinSize)
+        Window("Safari Icon Fixer", id: "main") { MainView() }.defaultSize(width: 1120, height: 680).windowResizability(.contentMinSize)
             .commands {
+                CommandMenu(l10n("Ikony")) {
+                    Button(l10n("Cofnij przygotowaną zmianę")) { NotificationCenter.default.post(name: .sifUndoDraft, object: nil) }.keyboardShortcut("z", modifiers: [.command, .option])
+                    Button(l10n("Zaznacz widoczne")) { NotificationCenter.default.post(name: .sifSelectAll, object: nil) }.keyboardShortcut("a", modifiers: [.command, .shift])
+                    Button(l10n("Podgląd")) { NotificationCenter.default.post(name: .sifQuickLook, object: nil) }.keyboardShortcut("y", modifiers: [.command])
+                }
                 CommandMenu(l10n("Język")) {
                     ForEach(AppLanguage.choices, id: \.code) { choice in
                         Button {

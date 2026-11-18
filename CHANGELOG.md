@@ -1,5 +1,10 @@
 # Historia wersji
 
+## 0.6.0 — Amethyst
+- Resizable, hideable sidebar and inspector; visual icon library with modifier selection, smart filters and remembered layout preferences.
+- Inline Color Studio, batch presets, file/image drag and drop, simulated Safari preview, individual icon history from local backups and one-step undo of staged changes.
+- Local staged-icon recovery with cache digest validation; signed Sparkle pipeline remains unchanged. Product site in docs/, plus a GitHub Pages and topics setup command.
+
 ## 0.5.0
 Sparkle 2.10.1: signed updates, optional automatic installation, and automatic checks at launch.
 
