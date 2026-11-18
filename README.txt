@@ -1,7 +1,9 @@
-SAFARI ICON FIXER 0.2 — prototyp lokalny
+SAFARI ICON FIXER 0.2.1 — prototyp lokalny
 
 Cel: duże ikony Ulubionych na stronie startowej Safari. Nie dotyczy ikon kart.
 Wymagania: macOS 13+; Apple Silicon lub Intel; Apple Command Line Tools.
+
+ZMIANA 0.2.1: rozbito złożone wyrażenia map/sort w skanie oraz filtrowaniu, aby ograniczyć pracę kompilatora Swift. Zachowano zakres folderów i zasady zapisu.
 
 INSTALACJA
 1. Rozpakuj ZIP w wybranym folderze.
@@ -21,7 +23,7 @@ OBSŁUGA
 - Przywróć kopię: po zamknięciu Safari wybierz katalog kopii z aplikacji. Obecna pamięć ikon zostanie również zachowana. Przywrócenie całego cache usuwa z aktywnego cache późniejsze zmiany ikon, nie zakładki. Kopie przechowywane w ~/Library/Application Support/Safari Icon Fixer/Backups. Można też odzyskać je ręcznie po zamknięciu Safari.
 
 OGRANICZENIA / BEZPIECZEŃSTWO
-- Wersja 0.2 nie została skompilowana ani przetestowana na macOS. Sprawdzono składnię Swift, skrypt bash i Info.plist w środowisku Linux. Skompilowano i uruchomiono testy indeksu Ulubionych na syntetycznej binarnej plist (Tests/main.swift): zakres bez folderu, wszystkie, zagnieżdżenia, identyczne nazwy folderów, puste foldery, wspólna domena, zakres kolejki i brak standardowego folderu. Nie testowano interfejsu SwiftUI ani zapisu prawdziwego cache Safari. Nie wykonywano zmian na komputerze użytkownika. Pierwszy test zalecany na jednej ikonie, po potwierdzeniu poprawności skanu.
+- Wersja 0.2.1 nie została skompilowana ani przetestowana na macOS. Sprawdzono składnię Swift, skrypt bash i Info.plist w środowisku Linux. Skompilowano i uruchomiono testy indeksu Ulubionych na syntetycznej binarnej plist (Tests/main.swift): zakres bez folderu, wszystkie, zagnieżdżenia, identyczne nazwy folderów, puste foldery, wspólna domena, zakres kolejki i brak standardowego folderu. Nie testowano interfejsu SwiftUI ani zapisu prawdziwego cache Safari. Nie wykonywano zmian na komputerze użytkownika. Pierwszy test zalecany na jednej ikonie, po potwierdzeniu poprawności skanu.
 - Safari używa wewnętrznego, niepublicznego formatu, który może się zmienić. Rozpoznawane: TouchIconCacheSettings.db, tabela cache_settings, klucze host i download_status_flags oraz icon_is_in_cache lub touch_icon_is_in_cache, pliki MD5 domeny. Zapis wymaga m.in. dopasowania co najmniej jednej istniejącej aktywnej ikony i jednoznacznego rekordu zmienianej domeny. Nie dodajemy nieznanych wierszy i nie resetujemy całej bazy.
 - Ścieżka Safari: ~/Library/Safari. Obsługa niestandardowych profili i niestandardowych folderów Ulubione nie jest potwierdzona.
 - Automatyczne przywracanie ikon po nadpisaniu przez Safari, ikony folderów, ikony kart, manifesty web app, zewnętrzne usługi ikon i pełne wsparcie SVG nie należą do tej wersji.

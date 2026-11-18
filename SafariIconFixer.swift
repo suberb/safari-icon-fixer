@@ -66,10 +66,28 @@ struct Cache {
         let dbRows = try rows(db, "SELECT host, \(flag) AS active FROM cache_settings;")
         var registered: [String: [Int]] = [:]
         for row in dbRows { if let h = row["host"] as? String { registered[h,default: []].append(row["active"] as? Int ?? 0) } }
-        let sites = named.map { host, links in
-            let url = icon(host); let data: Data? = (try? url.resourceValues(forKeys: [.isSymbolicLinkKey]))?.isSymbolicLink == true ? nil : (try? Data(contentsOf: url))
-            return Site(host: host, names: Array(Set(links.map(\.title))).sorted(), locations: links, registered: registered[host]?.count == 1, existing: data.flatMap { safePNG($0) != nil ? $0 : nil }, active: registered[host]?.first == 1)
-        }.sorted { a,b in a.title.localizedCaseInsensitiveCompare(b.title) == .orderedAscending }
+        var sites: [Site] = []
+        for (host, links) in named {
+            let url: URL = icon(host)
+            let values = try? url.resourceValues(forKeys: [.isSymbolicLinkKey])
+            var existing: Data? = nil
+            if values?.isSymbolicLink != true {
+                if let data = try? Data(contentsOf: url), safePNG(data) != nil {
+                    existing = data
+                }
+            }
+            let titles: [String] = links.map { link in link.title }
+            let names: [String] = Set(titles).sorted()
+            let flags: [Int] = registered[host] ?? []
+            let isRegistered: Bool = flags.count == 1
+            let isActive: Bool = flags.first == 1
+            let site = Site(host: host, names: names, locations: links,
+                            registered: isRegistered, existing: existing, active: isActive)
+            sites.append(site)
+        }
+        sites.sort { lhs, rhs in
+            lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+        }
         return (sites, index.folders)
     }
     func backup() throws -> URL {
@@ -165,13 +183,19 @@ func fetchIcon(_ host: String) async -> Pending? {
     @State private var folders: [FavoriteFolder] = []; @State private var scope: FavoriteScope = .root
     @State private var selected: String?; @State private var filter = "Wszystkie"; @State private var search = ""; @State private var message = "Przeskanuj Ulubione Safari. Nic nie zostanie zmienione."; @State private var busy = false; @State private var confirm = false; @State private var confirmRestore = false; @State private var chosenBackup: URL?
     var scoped: [Site] {
-        sites.compactMap { original in
-            let links = original.locations.filter { scope.includes($0.folder) }
-            guard !links.isEmpty else { return nil }
+        var result: [Site] = []
+        for original in sites {
+            let links: [FavoriteLink] = original.locations.filter { scope.includes($0.folder) }
+            if links.isEmpty { continue }
             var site = original
-            site.names = Array(Set(links.map(\.title))).sorted()
-            return site
-        }.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+            let titles: [String] = links.map { $0.title }
+            site.names = Set(titles).sorted()
+            result.append(site)
+        }
+        result.sort { lhs, rhs in
+            lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+        }
+        return result
     }
     var shown: [Site] { scoped.filter { s in (filter == "Wszystkie" || (filter == "Brakujące" && s.status != "OK") || (filter == "Gotowe" && pending[s.host] != nil)) && (search.isEmpty || (s.title + s.host).localizedCaseInsensitiveContains(search)) } }
     var missing: [Site] { scoped.filter { $0.registered && ($0.existing == nil || !$0.active) && pending[$0.host] == nil } }
