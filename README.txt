@@ -1,7 +1,9 @@
-SAFARI ICON FIXER 0.2.1 — prototyp lokalny
+SAFARI ICON FIXER 0.2.2 — prototyp lokalny
 
 Cel: duże ikony Ulubionych na stronie startowej Safari. Nie dotyczy ikon kart.
 Wymagania: macOS 13+; Apple Silicon lub Intel; Apple Command Line Tools.
+
+ZMIANA 0.2.2: dodano własną ikonę macOS (.icns) do pakietu aplikacji, z zachowaniem kodu Swift z 0.2.1. Sprawdzono strukturę pliku ICNS, przezroczystość, wpis Info.plist oraz skrypt budowania; wyświetlanie w Finderze i Docku wymaga sprawdzenia na macOS.
 
 ZMIANA 0.2.1: rozbito złożone wyrażenia map/sort w skanie oraz filtrowaniu, aby ograniczyć pracę kompilatora Swift. Zachowano zakres folderów i zasady zapisu.
 
