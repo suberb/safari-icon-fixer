@@ -174,8 +174,8 @@ final class SameHost: NSObject, URLSessionTaskDelegate {
     func accepts(_ url: URL) -> Bool { guard url.scheme == "https", let h = url.host?.lowercased(), url.user == nil, url.password == nil else { return false }; return h == host || h == "www." + host || (host.hasPrefix("www.") && h == String(host.dropFirst(4))) }
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) { completionHandler(request.url.map(accepts) == true ? request : nil) }
 }
-func fetchIcon(_ host: String) async -> Pending? {
-    guard let root = URL(string: "https://\(host)/") else { return nil }
+func fetchWebsiteIcons(_ host: String, multiple: Bool = false) async -> [IconCandidate] {
+    guard let root = URL(string: "https://\(host)/") else { return [] }
     let policy = SameHost(host); let config = URLSessionConfiguration.ephemeral; config.timeoutIntervalForRequest = 6; config.timeoutIntervalForResource = 10; config.httpShouldSetCookies = false; config.urlCredentialStorage = nil
     let session = URLSession(configuration: config, delegate: policy, delegateQueue: nil); defer { session.invalidateAndCancel() }
     func get(_ url: URL, limit: Int) async -> (Data,URL)? {
@@ -198,11 +198,20 @@ func fetchIcon(_ host: String) async -> Pending? {
         candidates += links.sorted{$0.0<$1.0}.map{$0.1}
     }
     candidates += ["apple-touch-icon.png","apple-touch-icon-precomposed.png","favicon.ico"].map{root.appendingPathComponent($0)}
-    var seen = Set<URL>(); var best: (Pending,Int)?
-    for url in candidates.filter({seen.insert($0).inserted}).prefix(5) {
-        if let (data, final) = await get(url, limit: 8_000_000), let (png, size) = safePNG(data), size > (best?.1 ?? 0) { best = (Pending(png:png, source:final.absoluteString), size); if size >= 180 { break } }
+    var seen = Set<URL>(); var results: [IconCandidate] = []
+    for url in candidates.filter({seen.insert($0).inserted}).prefix(multiple ? 10 : 5) {
+        if Task.isCancelled { break }
+        if let (data, final) = await get(url, limit: 8_000_000), let (png, size) = safePNG(data) {
+            let item = IconCandidate(title: final.lastPathComponent.isEmpty ? host : final.lastPathComponent, png: png, pixels: size, source: final.absoluteString, page: nil)
+            if !results.contains(where: { $0.png == png }) { results.append(item) }
+            if !multiple && size >= 180 { break }
+        }
     }
-    return best?.0
+    return results.sorted { $0.pixels > $1.pixels }
+}
+func fetchIcon(_ host: String) async -> Pending? {
+    guard let result = await fetchWebsiteIcons(host).first else { return nil }
+    return Pending(png: result.png, source: result.source)
 }
 
 @MainActor struct MainView: View {
@@ -215,6 +224,7 @@ func fetchIcon(_ host: String) async -> Pending? {
     @State private var showPermission = false
     @State private var waitingForPermission = false
     @State private var permissionHelp = ""
+    @State private var iconEditor: Site?
     var scoped: [Site] {
         var result: [Site] = []
         for original in sites {
@@ -403,6 +413,7 @@ func fetchIcon(_ host: String) async -> Pending? {
             Text(s.status).font(.callout)
             Text(cacheDetails(s)).font(.caption).foregroundStyle(.secondary)
             Button("Wymuś naprawę tej ikony") { prepareSites([s]) }.disabled(busy || !s.registered)
+            Button("Szukaj ikon w internecie…") { iconEditor = s }.disabled(busy || !s.registered)
             Button("Wybierz własną ikonę…") { choose(s) }.disabled(busy || !s.registered)
             if let p = pending[s.host] {
                 Text(p.source).font(.caption).foregroundStyle(.secondary).lineLimit(2)
@@ -496,6 +507,14 @@ func fetchIcon(_ host: String) async -> Pending? {
         .padding(16)
         .frame(minWidth: 780, minHeight: 510)
         .onAppear(perform: scan)
+        .sheet(item: $iconEditor) { site in
+            IconSearchView(host: site.host, title: site.names.first ?? site.host, existing: pending[site.host]?.png ?? site.existing) { result in
+                guard scoped.contains(where: { $0.host == site.host && $0.registered }) else { return }
+                pending[site.host] = result
+                if site.existing != nil { replacements.insert(site.host) }
+                message = "Przygotowano ikonę: \(site.host). Kliknij Zastosuj, aby zapisać."
+            }
+        }
         .sheet(isPresented: $showPermission, onDismiss: { waitingForPermission = false }) { permissionSheet }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             if waitingForPermission && permissionDenied { runScan(presentPermission: false) }

@@ -35,3 +35,17 @@ precondition(!isSafariPermissionError(NSError(domain: NSCocoaErrorDomain, code: 
 precondition(!isSafariPermissionError(NSError(domain: NSPOSIXErrorDomain, code: 2)))
 precondition(!isSafariPermissionError(NSError(domain: "Schema", code: 0, userInfo: [NSLocalizedDescriptionKey: "Nieznany schemat cache Safari."])))
 print("OK: permission denial / wrapped error / missing files / schema error")
+
+let queryText = "Google Drive logo & icon"
+let searchURL = commonsSearchURL(queryText)!
+let components = URLComponents(url: searchURL, resolvingAgainstBaseURL: false)!
+precondition(components.queryItems?.first(where: { $0.name == "gsrsearch" })?.value == queryText)
+precondition(allowedCommonsURL(searchURL))
+precondition(allowedCommonsURL(URL(string:"https://upload.wikimedia.org/wikipedia/commons/a/a1/logo.png")!))
+precondition(!allowedCommonsURL(URL(string:"https://commons.wikimedia.org.example.com/evil")!))
+precondition(!allowedCommonsURL(URL(string:"http://commons.wikimedia.org/")!))
+precondition(!allowedCommonsURL(URL(string:"https://commons.wikimedia.org:8443/")!))
+let fixture = Data(#"{"query":{"pages":[{"title":"File:Logo.svg","index":1,"imageinfo":[{"url":"https://upload.wikimedia.org/a.svg","thumburl":"https://upload.wikimedia.org/a.png","descriptionurl":"https://commons.wikimedia.org/wiki/File:Logo.svg","mime":"image/svg+xml"}]}]}}"#.utf8)
+let page = try JSONDecoder().decode(CommonsResponse.self, from: fixture).query?.pages?.first
+precondition(page?.title == "File:Logo.svg" && page?.imageinfo?.first?.thumburl?.path == "/a.png")
+print("OK: Commons search URL / encoding / allowlist / JSON fixture")
