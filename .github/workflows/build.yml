@@ -1,0 +1,56 @@
+name: Build macOS
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ['v*']
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Test models and cache fixtures
+        run: |
+          swiftc FavoritesIndex.swift PermissionCheck.swift IconSearchModel.swift IconPixels.swift Tests/main.swift -o /tmp/sif-model-tests
+          /tmp/sif-model-tests
+          swiftc ReleaseModel.swift Tests/Updates/main.swift -o /tmp/sif-update-tests
+          /tmp/sif-update-tests
+          python3 Tests/test-reset.py
+          python3 Tests/test-display.py
+          node Tests/test-selection.js
+          bash Testuj-renderowanie.command
+      - name: Build application
+        run: bash Zbuduj.command
+      - name: Package
+        run: |
+          VERSION=$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' Info.plist)
+          mkdir -p dist
+          ditto -c -k --sequesterRsrc --keepParent 'build/Safari Icon Fixer.app' "dist/SafariIconFixer-$VERSION-macOS-$(uname -m).zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SafariIconFixer-macOS
+          path: dist/*.zip
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: SafariIconFixer-macOS
+          path: dist
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(python3 -c 'import plistlib; print(plistlib.load(open("Info.plist", "rb"))["CFBundleShortVersionString"])')
+          test "$GITHUB_REF_NAME" = "v$VERSION"
+          git archive --format=zip --prefix="SafariIconFixer-$VERSION/" -o "dist/SafariIconFixer-$VERSION-source.zip" HEAD
+          (cd dist && sha256sum *.zip > SHA256SUMS.txt)
+          gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --title "Safari Icon Fixer $VERSION" --notes-file RELEASE.md

@@ -300,6 +300,8 @@ func fetchIcon(_ host: String) async -> Pending? {
     @State private var store = Cache(safari: FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Safari"))
     @State private var sites: [Site] = []; @State private var pending: [String: Pending] = [:]; @State private var replacements = Set<String>()
     @State private var marked = Set<String>()
+    @StateObject private var updates = AppUpdates()
+    @State private var showAbout = false
     @State private var gridMode = true
     @State private var folders: [FavoriteFolder] = []; @State private var scope: FavoriteScope = .root
     @State private var selected: String?; @State private var filter = "Wszystkie"; @State private var search = ""; @State private var message = "Przeskanuj Ulubione Safari. Nic nie zostanie zmienione."; @State private var busy = false; @State private var confirm = false; @State private var confirmRestore = false; @State private var chosenBackup: URL?
@@ -482,7 +484,7 @@ func fetchIcon(_ host: String) async -> Pending? {
                 Image(nsImage: NSApplication.shared.applicationIconImage).resizable().scaledToFit().frame(width: 34, height: 34)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Icon Fixer").font(.headline)
-                    Text("Safari • 0.3.1").font(.caption).foregroundStyle(.secondary)
+                    Text("Safari • \(AppReleaseInfo.version)").font(.caption).foregroundStyle(.secondary)
                 }
             }.padding(.bottom, 4)
             Text("BIBLIOTEKA").font(.caption2.weight(.semibold)).tracking(1.1).foregroundStyle(.secondary)
@@ -502,6 +504,11 @@ func fetchIcon(_ host: String) async -> Pending? {
             Button {
                 if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Safari") { NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration(), completionHandler: nil) }
             } label: { Label("Otwórz Safari", systemImage: "safari") }.buttonStyle(.plain)
+            Button { showAbout = true } label: { Label("O aplikacji", systemImage: "info.circle") }.buttonStyle(.plain)
+            if updates.available != nil {
+                Button { showAbout = true } label: { Label("Nowa wersja", systemImage: "arrow.down.circle.fill") }
+                    .buttonStyle(.plain).foregroundStyle(purple)
+            }
         }.padding(12).frame(width: 180).frame(maxHeight: .infinity, alignment: .topLeading)
             .background(.regularMaterial)
     }
@@ -722,6 +729,13 @@ func fetchIcon(_ host: String) async -> Pending? {
         .frame(minWidth: 900, minHeight: 510)
         .tint(purple)
         .onAppear(perform: scan)
+        .task { await updates.checkIfDue() }
+        .sheet(isPresented: $showAbout) { AppAboutView(updates: updates) }
+        .onReceive(NotificationCenter.default.publisher(for: .sifAbout)) { _ in showAbout = true }
+        .onReceive(NotificationCenter.default.publisher(for: .sifUpdate)) { _ in
+            showAbout = true
+            Task { await updates.check() }
+        }
         .sheet(item: $iconEditor) { site in
             IconSearchView(host: site.host, title: site.names.first ?? site.host, existing: pending[site.host]?.png ?? site.existing) { result in
                 guard scoped.contains(where: { $0.host == site.host && $0.registered }) else { return }
@@ -734,6 +748,7 @@ func fetchIcon(_ host: String) async -> Pending? {
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             if waitingForPermission && permissionDenied { runScan(presentPermission: false) }
             else if waitingForPermission { waitingForPermission = false }
+            Task { await updates.checkIfDue() }
         }
         .onChange(of: scope) { _ in selected = nil }
         .alert("Zastosować przygotowane ikony?",isPresented:$confirm) { Button("Anuluj",role:.cancel){}; Button("Zapisz",action:write) } message: { Text("Zakres: \(scopeLabel). Zapis: \(scopedPending.count) ikon. Safari współdzieli ikony domen, więc zmiana może być widoczna również w innych folderach i poza Ulubionymi. Zamknij Safari przez ⌘Q. Przed zapisem powstanie kopia cache.") }
@@ -746,4 +761,14 @@ func fetchIcon(_ host: String) async -> Pending? {
         .alert("Przywrócić cały cache ikon?",isPresented:$confirmRestore) { Button("Anuluj",role:.cancel){}; Button("Przywróć",role:.destructive) { if let saved = chosenBackup { do { let displaced = try store.restore(saved); pending = [:]; replacements = []; marked = []; scan(); message = "Przywrócono kopię. Poprzedni cache: \(displaced.lastPathComponent)." } catch {handleOperationError(error)} } } } message: { Text("Wymaga zamknięcia Safari. Bieżący folder również zostanie zachowany jako kopia.") }
     }
 }
-@main struct SafariIconFixerApp: App { var body: some Scene { WindowGroup { MainView() }.defaultSize(width: 1040, height: 640).windowResizability(.contentMinSize) } }
+@main struct SafariIconFixerApp: App {
+    var body: some Scene {
+        WindowGroup { MainView() }.defaultSize(width: 1040, height: 640).windowResizability(.contentMinSize)
+            .commands {
+                CommandGroup(replacing: .appInfo) {
+                    Button("O Safari Icon Fixer") { NotificationCenter.default.post(name: .sifAbout, object: nil) }
+                    Button("Sprawdź aktualizacje…") { NotificationCenter.default.post(name: .sifUpdate, object: nil) }
+                }
+            }
+    }
+}
