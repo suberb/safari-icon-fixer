@@ -28,7 +28,7 @@ struct FavoritesIndex {
     let folders: [FavoriteFolder]
     enum ReadError: LocalizedError {
         case unknownFavorites
-        var errorDescription: String? { "Nie rozpoznano standardowego folderu Ulubione (BookmarksBar). Nie zmieniono plików." }
+        var errorDescription: String? { l10n("Nie rozpoznano standardowego folderu Ulubione (BookmarksBar). Nie zmieniono plików.") }
     }
     init(root: [String: Any]) throws {
         func children(_ node: [String: Any]) -> [[String: Any]] { node["Children"] as? [[String: Any]] ?? [] }
@@ -44,7 +44,7 @@ struct FavoritesIndex {
                     // UUID is stable if Safari supplies it; otherwise the position distinguishes identical names.
                     let segment = (node["WebBookmarkUUID"] as? String).map { "uuid:" + $0 } ?? "index:\(index):\(node["Title"] as? String ?? "")"
                     let newPath = path + [segment]
-                    let newTitles = titles + [node["Title"] as? String ?? "Folder bez nazwy"]
+                    let newTitles = titles + [node["Title"] as? String ?? l10n("Folder bez nazwy")]
                     folders.append(FavoriteFolder(path: newPath, titles: newTitles))
                     visit(entries, path: newPath, titles: newTitles)
                 }

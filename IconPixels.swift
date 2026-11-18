@@ -102,7 +102,7 @@ struct IconRaster {
 enum SafariIconDisplay: Int {
     case systemTile = 0
     case fullTile = 1
-    var label: String { self == .fullTile ? "Pełny kafelek" : "Tło systemowe" }
+    var label: String { self == .fullTile ? l10n("Pełny kafelek") : l10n("Tło systemowe") }
 }
 func iconDisplayAssignment(_ style: SafariIconDisplay?) -> String {
     guard let style else { return "" }

@@ -1,3 +1,6 @@
+WERSJA 0.4.0 — INTERNATIONAL EDITION
+Sześć języków, dobór automatyczny lub ręczny w menu Język (po ponownym otwarciu aplikacji). Nazwy zakładek użytkownika pozostają bez zmian. Komunikaty systemowe macOS, treści Google i GitHub pozostają w języku źródła.
+
 WERSJA 0.3.2 — O APLIKACJI I AKTUALIZACJE
 Nowe okno informacyjne Ana × ChatGPT, automatyczna (raz na dobę podczas aktywności) i ręczna kontrola stabilnych publicznych wydań GitHub, link do pobrania, bez automatycznej instalacji. Instrukcja publikacji: PUBLIKACJA.md. Odtworzona historia Git i workflow macOS. Brak SDK macOS: pełna kompilacja nowego UI oraz połączenie z rzeczywistym wydaniem wymagają potwierdzenia.
 

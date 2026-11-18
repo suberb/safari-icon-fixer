@@ -19,8 +19,11 @@ jobs:
       - uses: actions/checkout@v5
       - name: Test models and cache fixtures
         run: |
-          swiftc FavoritesIndex.swift PermissionCheck.swift IconSearchModel.swift IconPixels.swift Tests/main.swift -o /tmp/sif-model-tests
+          swiftc Localization.swift FavoritesIndex.swift PermissionCheck.swift IconSearchModel.swift IconPixels.swift Tests/main.swift -o /tmp/sif-model-tests
           /tmp/sif-model-tests
+          swiftc Localization.swift Tests/Localization/main.swift -o /tmp/sif-localization-tests
+          /tmp/sif-localization-tests
+          python3 Tests/test-localization-catalog.py
           swiftc ReleaseModel.swift Tests/Updates/main.swift -o /tmp/sif-update-tests
           /tmp/sif-update-tests
           python3 Tests/test-reset.py

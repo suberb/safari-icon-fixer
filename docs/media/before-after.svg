@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420">
+<defs><linearGradient id="b" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#17182b"/><stop offset="1" stop-color="#302044"/></linearGradient></defs><rect width="1200" height="420" rx="24" fill="url(#b)"/>
+<g font-family="-apple-system,BlinkMacSystemFont,Arial,sans-serif">
+<text x="600" y="53" font-size="26" fill="#f7f4ff" font-weight="600" text-anchor="middle">From letters to icons.</text>
+<rect x="35" y="81" width="540" height="273" rx="16" fill="#272834" stroke="#4b4659"/>
+<rect x="55" y="101" width="100" height="32" rx="16" fill="#42424f"/>
+<text x="105" y="122" font-size="15" fill="white" text-anchor="middle" font-weight="600">Before</text>
+<text x="55" y="159" fill="#d5d2df" font-weight="600" font-size="17">Favorites</text>
+<g transform="translate(61,185)">
+<rect width="74" height="74" rx="16" fill="#647185"/>
+<text x="37" y="47" font-size="34" fill="white" text-anchor="middle">F</text>
+<text x="37" y="96" font-size="10.5" fill="#eeeaf6" text-anchor="middle">Figma</text>
+</g>
+<g transform="translate(143,185)">
+<rect width="74" height="74" rx="16" fill="#aaa7b5"/>
+<text x="37" y="47" font-size="34" fill="white" text-anchor="middle">N</text>
+<text x="37" y="96" font-size="10.5" fill="#eeeaf6" text-anchor="middle">Notion</text>
+</g>
+<g transform="translate(225,185)">
+<rect width="74" height="74" rx="16" fill="#79837c"/>
+<text x="37" y="47" font-size="34" fill="white" text-anchor="middle">W</text>
+<text x="37" y="96" font-size="10.5" fill="#eeeaf6" text-anchor="middle">Wikipedia</text>
+</g>
+<g transform="translate(307,185)">
+<rect width="74" height="74" rx="16" fill="#6384aa"/>
+<text x="37" y="47" font-size="34" fill="white" text-anchor="middle">V</text>
+<text x="37" y="96" font-size="10.5" fill="#eeeaf6" text-anchor="middle">Vimeo</text>
+</g>
+<g transform="translate(389,185)">
+<rect width="74" height="74" rx="16" fill="#ad7a8b"/>
+<text x="37" y="47" font-size="34" fill="white" text-anchor="middle">D</text>
+<text x="37" y="96" font-size="10.5" fill="#eeeaf6" text-anchor="middle">Dribbble</text>
+</g>
+<g transform="translate(471,185)">
+<rect width="74" height="74" rx="16" fill="#8e899a"/>
+<text x="37" y="47" font-size="34" fill="white" text-anchor="middle">U</text>
+<text x="37" y="96" font-size="10.5" fill="#eeeaf6" text-anchor="middle">Unsplash</text>
+</g>
+<text x="305" y="329" font-size="13" fill="#a7a2b6" text-anchor="middle">Missing or generic icons</text>
+<rect x="625" y="81" width="540" height="273" rx="16" fill="#272834" stroke="#4b4659"/>
+<rect x="645" y="101" width="94" height="32" rx="16" fill="#7852b6"/>
+<text x="692" y="122" font-size="15" fill="white" text-anchor="middle" font-weight="600">After</text>
+<text x="645" y="159" fill="#d5d2df" font-weight="600" font-size="17">Favorites</text>
+<g transform="translate(651,185)">
+<rect width="74" height="74" rx="16" fill="#29292c"/>
+<g transform="translate(-3,0)"><circle cx="32" cy="19" r="8" fill="#f24e1e"/><circle cx="48" cy="19" r="8" fill="#ff7262"/><circle cx="32" cy="35" r="8" fill="#a259ff"/><circle cx="48" cy="35" r="8" fill="#1abcfe"/><circle cx="32" cy="51" r="8" fill="#0acf83"/></g>
+<text x="37" y="96" font-size="10.5" fill="#eeeaf6" text-anchor="middle">Figma</text>
+</g>
+<g transform="translate(733,185)">
+<rect width="74" height="74" rx="16" fill="#fff"/>
+<g transform="translate(-3,0)"><text x="40" y="53" font-family="Georgia" font-size="40" font-weight="bold" fill="#111" text-anchor="middle">N</text></g>
+<text x="37" y="96" font-size="10.5" fill="#eeeaf6" text-anchor="middle">Notion</text>
+</g>
+<g transform="translate(815,185)">
+<rect width="74" height="74" rx="16" fill="#fff"/>
+<g transform="translate(-3,0)"><text x="40" y="51" font-family="Georgia" font-size="35" fill="#222" text-anchor="middle">W</text></g>
+<text x="37" y="96" font-size="10.5" fill="#eeeaf6" text-anchor="middle">Wikipedia</text>
+</g>
+<g transform="translate(897,185)">
+<rect width="74" height="74" rx="16" fill="#00a9e9"/>
+<g transform="translate(-3,0)"><text x="40" y="53" font-family="Georgia" font-size="46" font-weight="bold" font-style="italic" fill="white" text-anchor="middle">v</text></g>
+<text x="37" y="96" font-size="10.5" fill="#eeeaf6" text-anchor="middle">Vimeo</text>
+</g>
+<g transform="translate(979,185)">
+<rect width="74" height="74" rx="16" fill="#f2a4ca"/>
+<g transform="translate(-3,0)"><g fill="none" stroke="#a03165" stroke-width="3"><circle cx="40" cy="37" r="22"/><path d="M27 18Q42 32 51 57M18 30Q43 35 57 22M21 49Q40 30 62 44"/></g></g>
+<text x="37" y="96" font-size="10.5" fill="#eeeaf6" text-anchor="middle">Dribbble</text>
+</g>
+<g transform="translate(1061,185)">
+<rect width="74" height="74" rx="16" fill="#fff"/>
+<g transform="translate(-3,0)"><path d="M29 21H51V39H29ZM18 41H32V49H48V41H62V59H18Z" fill="#111"/></g>
+<text x="37" y="96" font-size="10.5" fill="#eeeaf6" text-anchor="middle">Unsplash</text>
+</g>
+<text x="895" y="329" font-size="13" fill="#a7a2b6" text-anchor="middle">Restored or personalized icons</text>
+<path d="M587 218h24m-10-9 10 9-10 9" fill="none" stroke="#c9b4ff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="600" y="390" text-anchor="middle" font-size="13" fill="#aaa1bf" letter-spacing="1">ILLUSTRATIVE COMPARISON · DEMO BOOKMARKS</text></g></svg>

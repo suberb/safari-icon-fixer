@@ -1,5 +1,8 @@
 # Historia wersji
 
+## 0.4.0
+Sześć języków interfejsu (EN/DE/FR/UK/PL/ES), wybór automatyczny i ręczny, testy lokalizacji, nowy README produktu i grafiki poglądowe.
+
 ## 0.3.3
 Instalator DMG dla Apple Silicon, instalacja przez przeciągnięcie do Applications, aktualizator preferuje DMG (obsługuje starsze ZIP), publikacja nowych wersji z main po testach.
 

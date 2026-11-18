@@ -1,26 +1,56 @@
+<div align="center">
+  <img src="Resources/AppIcon.png" width="112" alt="Safari Icon Fixer app icon">
+
 # Safari Icon Fixer
 
-**Ana × ChatGPT** · macOS · Bez abonamentu.
+**Your Safari. Your icons.**
 
-Naprawa i personalizacja ikon Ulubionych Safari — wybór folderów, wyszukiwanie, własne tło, skalowanie logo, reset, kopie zapasowe. Nie modyfikuje zakładek, haseł ani historii Safari.
+Repair missing Favorites icons, customize your start page, and make Safari feel like yours again.
 
-## Instalacja
+<a href="https://github.com/suberb/safari-icon-fixer/releases/latest"><img src="docs/media/download.svg" width="276" alt="Download for macOS — DMG"></a>
 
-- [Wydania i pobieranie](https://github.com/suberb/safari-icon-fixer/releases): pobierz instalator `.dmg` dla Apple Silicon, otwórz go i przeciągnij aplikację do Applications (Aplikacje). Kod źródłowy pozostaje dostępny przez GitHub.
-- Wersję źródłową kompiluj na Macu: `bash Zbuduj.command` (Apple Command Line Tools). Przenieś plik .app do Aplikacji.
-- W razie potrzeby nadaj pełny dostęp do dysku w ustawieniach macOS.
-- Przed zapisem/resetem ikon zamknij Safari. Program tworzy lokalne kopie cache.
+[Latest release](https://github.com/suberb/safari-icon-fixer/releases/latest) · [All releases](https://github.com/suberb/safari-icon-fixer/releases) · [Changelog](CHANGELOG.md)
 
-Aplikacja jest podpisywana ad hoc, nie notaryzowana. Używa niepublicznego formatu cache Safari; działanie po aktualizacji Safari nie jest gwarantowane. Nie wyłączaj SIP ani Gatekeepera.
+macOS · Apple Silicon · Free · No account required
 
-## Aktualizacje
+</div>
 
-Menu aplikacji → Sprawdź aktualizacje, lub O aplikacji. Automatyczne sprawdzanie można wyłączyć. Publiczne wydania nie wymagają tokena. Prywatne wydania są dostępne przez stronę GitHub po zalogowaniu; aplikacja nie przechowuje hasła ani tokena, więc nie sprawdza ich automatycznie. Nowy DMG (lub ZIP ze starszych wydań) jest pobierany w przeglądarce, instalacja jest ręczna.
+![Safari Icon Fixer — an illustrative app preview with fictional Favorites and folders](docs/media/hero.jpg)
 
-## Rozwijanie
+## Give your Favorites a fresh look
 
-Szczegóły i historia funkcji: [README.txt](README.txt), [CHANGELOG.md](CHANGELOG.md). Wersja pochodzi z Info.plist. `bash Testuj-renderowanie.command` uruchamia testy grafiki na Macu. Workflow GitHub Actions kompiluje na Apple Silicon po pushu. Nowa wersja Info.plist na main jest publikowana po przejściu testów; można także użyć tagu zgodnego z Info.plist albo ręcznie uruchomić workflow z opcją publish. Istniejące tagi i wydania nie są nadpisywane. Prywatne repozytoria mogą zużywać płatne minuty Actions; przed publikacją sprawdź limit na koncie.
+![Illustrative comparison of generic letter tiles and restored website icons, using demo bookmarks](docs/media/before-after.svg)
 
-## Prywatność
+- **Repair** missing icons or force-refresh the cached ones Safari isn't showing.
+- **Personalize** with images from the web, custom backgrounds, logo margins, or colors taken from an icon.
+- **Organize** by Favorites folder or work on individual sites.
+- **Undo** your changes with reset and local backups.
+- **Stay current** with automatic update checks through GitHub Releases.
 
-Brak telemetrii. Żądania wysyłane są podczas wyszukiwania/pobierania ikon i sprawdzania aktualizacji. Repozytorium nie zawiera prawdziwych zakładek, danych Safari ani tokenów. Dane i cache pozostają na komputerze. Szczegóły w README.txt.
+## Six languages. One app.
+
+English · Deutsch · Français · Українська · Polski · Español
+
+Automatically follows your preferred supported system language, or choose your own in the app's Language menu (applies after reopening).
+
+## Get started
+
+1. Download the latest **DMG** and drag Safari Icon Fixer into Applications.
+2. Open the app. If required, grant Full Disk Access in System Settings → Privacy & Security.
+3. Scan Favorites, choose your icons, quit Safari, and apply your changes. Reopen Safari to see the result.
+
+**First launch:** the current app is ad hoc signed, not Apple-notarized. macOS may show a warning. If you trust the download from this repository, use System Settings → Privacy & Security → Open Anyway for this app only, or build from source. Do not disable macOS security protections. See [installation and technical details](docs/TECHNICAL.md).
+
+## Made for your Mac
+
+No subscriptions or telemetry. Bookmarks, icon caches and backups stay on your Mac; network requests are made for image searches, downloads and update checks. Safari's internal icon cache can change between versions, so compatibility isn't guaranteed.
+
+[Technical documentation](docs/TECHNICAL.md) · [Source and build instructions](README.txt) · [Report an issue](https://github.com/suberb/safari-icon-fixer/issues)
+
+<div align="center">
+
+**Ana × ChatGPT**
+
+</div>
+
+*Marketing illustrations are conceptual, not live screenshots. All example bookmarks and folders are illustrative, not user data.*

@@ -12,11 +12,11 @@ struct Site: Identifiable {
     var title: String { names.joined(separator: " · ") }
     var needsRepair: Bool { !registered || existing == nil || !active || downloadFlags != 1 }
     var status: String {
-        if !registered { return "Brak rekordu" }
-        if existing == nil { return "Brak ikony" }
-        if !active { return "Ikona nieaktywna" }
-        if downloadFlags != 1 { return "Status do sprawdzenia" }
-        return "W cache" // This is not proof of rendering in Safari.
+        if !registered { return l10n("Brak rekordu") }
+        if existing == nil { return l10n("Brak ikony") }
+        if !active { return l10n("Ikona nieaktywna") }
+        if downloadFlags != 1 { return l10n("Status do sprawdzenia") }
+        return l10n("W cache") // This is not proof of rendering in Safari.
     }
 }
 struct Pending {
@@ -32,11 +32,11 @@ func sql(_ db: URL, _ query: String, write: Bool = false) throws -> Data {
     p.arguments = ["-bail", "-init", "/dev/null"] + (write ? [] : ["-readonly", "-json"]) + [db.path, ".timeout 3000", query]
     let output = Pipe(); let error = Pipe(); p.standardOutput = output; p.standardError = error
     try p.run(); let data = output.fileHandleForReading.readDataToEndOfFile(); let err = error.fileHandleForReading.readDataToEndOfFile(); p.waitUntilExit()
-    guard p.terminationStatus == 0 else { throw fail(String(data: err, encoding: .utf8) ?? "Błąd SQLite") }; return data
+    guard p.terminationStatus == 0 else { throw fail(String(data: err, encoding: .utf8) ?? l10n("Błąd SQLite")) }; return data
 }
 func rows(_ db: URL, _ query: String) throws -> [[String: Any]] {
     let data = try sql(db, query); if data.isEmpty { return [] }
-    guard let result = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { throw fail("Nierozpoznany wynik SQLite.") }; return result
+    guard let result = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { throw fail(l10n("Nierozpoznany wynik SQLite.")) }; return result
 }
 func safePNG(_ data: Data) -> (Data, Int)? {
     guard data.count <= 8_000_000, let src = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
@@ -72,10 +72,10 @@ struct Cache {
     func icon(_ host: String) -> URL { images.appendingPathComponent(hash(host) + ".png") }
     func schema() throws -> String {
         for path in [safari, cache, images, db] {
-            let v = try path.resourceValues(forKeys: [.isSymbolicLinkKey]); guard v.isSymbolicLink != true else { throw fail("Nieobsługiwana ścieżka symboliczna: \(path.path)") }
+            let v = try path.resourceValues(forKeys: [.isSymbolicLinkKey]); guard v.isSymbolicLink != true else { throw fail(l10n("Nieobsługiwana ścieżka symboliczna: {0}", String(describing: path.path))) }
         }
         let cols = Set(try rows(db,"PRAGMA table_info(cache_settings);").compactMap { $0["name"] as? String })
-        guard cols.contains("host"), cols.contains("download_status_flags"), let flag = ["touch_icon_is_in_cache", "icon_is_in_cache"].first(where: {cols.contains($0)}) else { throw fail("Nieznany schemat cache Safari. Zapis jest zablokowany.") }
+        guard cols.contains("host"), cols.contains("download_status_flags"), let flag = ["touch_icon_is_in_cache", "icon_is_in_cache"].first(where: {cols.contains($0)}) else { throw fail(l10n("Nieznany schemat cache Safari. Zapis jest zablokowany.")) }
         return flag
     }
     func hasDisplayColumn() throws -> Bool {
@@ -96,7 +96,7 @@ struct Cache {
         try checkReadAccess()
         let flag = try schema(); let bookmark = safari.appendingPathComponent("Bookmarks.plist")
         let obj = try PropertyListSerialization.propertyList(from: Data(contentsOf: bookmark), options: [], format: nil)
-        guard let root = obj as? [String: Any] else { throw fail("Nieznany format zakładek.") }
+        guard let root = obj as? [String: Any] else { throw fail(l10n("Nieznany format zakładek.")) }
         let index = try FavoritesIndex(root: root)
         let named = Dictionary(grouping: index.links, by: \.host)
         let displayExpr = try hasDisplayColumn() ? "transparency_analysis_result" : "NULL"
@@ -139,23 +139,23 @@ struct Cache {
         return (sites, index.folders)
     }
     func backup() throws -> URL {
-        guard !safariRunning else { throw fail("Zamknij Safari (⌘Q), a następnie ponów.") }
+        guard !safariRunning else { throw fail(l10n("Zamknij Safari (⌘Q), a następnie ponów.")) }
         try Cache.fm.createDirectory(at: backups, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         let dest = backups.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try Cache.fm.copyItem(at: cache, to: dest); return dest
     }
     func apply(_ pending: [String: Pending], allowingReplacement: Set<String>, scope: FavoriteScope) throws -> (URL, Int) {
-        guard !pending.isEmpty, !safariRunning else { throw fail("Zamknij Safari (⌘Q) i przygotuj ikony.") }
+        guard !pending.isEmpty, !safariRunning else { throw fail(l10n("Zamknij Safari (⌘Q) i przygotuj ikony.")) }
         let flag = try schema(); let current = try scan().sites; let byHost = Dictionary(uniqueKeysWithValues: current.map { ($0.host, $0) })
         for (host, item) in pending {
-            guard let site = byHost[host], site.locations.contains(where: { scope.includes($0.folder) }), site.registered, site.existing == nil || allowingReplacement.contains(host) || (site.needsRepair && site.existing == item.png) else { throw fail("Stan \(host) uległ zmianie lub rekord nie istnieje. Przeskanuj ponownie.") }
-            if let expected = item.expectedDigest, site.existing.map(iconDigest) != expected { throw fail("Ikona \(host) zmieniła się od przygotowania. Przeskanuj i ponów.") }
-            if Cache.fm.fileExists(atPath: icon(host).path), try icon(host).resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink == true { throw fail("Odmowa zapisu do dowiązania symbolicznego.") }
+            guard let site = byHost[host], site.locations.contains(where: { scope.includes($0.folder) }), site.registered, site.existing == nil || allowingReplacement.contains(host) || (site.needsRepair && site.existing == item.png) else { throw fail(l10n("Stan {0} uległ zmianie lub rekord nie istnieje. Przeskanuj ponownie.", String(describing: host))) }
+            if let expected = item.expectedDigest, site.existing.map(iconDigest) != expected { throw fail(l10n("Ikona {0} zmieniła się od przygotowania. Przeskanuj i ponów.", String(describing: host))) }
+            if Cache.fm.fileExists(atPath: icon(host).path), try icon(host).resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink == true { throw fail(l10n("Odmowa zapisu do dowiązania symbolicznego.")) }
         }
-        guard current.contains(where: { $0.registered && $0.existing != nil && $0.active }) else { throw fail("Nie potwierdzono mapowania nazw plików MD5 dla tej wersji Safari. Zapis zablokowany.") }
+        guard current.contains(where: { $0.registered && $0.existing != nil && $0.active }) else { throw fail(l10n("Nie potwierdzono mapowania nazw plików MD5 dla tej wersji Safari. Zapis zablokowany.")) }
         let supportsDisplay = try hasDisplayColumn()
         if !supportsDisplay && pending.values.contains(where: { $0.display != nil }) {
-            throw fail("Ta wersja cache Safari nie udostępnia parametru stylu ikon. Nie zapisano zmian.")
+            throw fail(l10n("Ta wersja cache Safari nie udostępnia parametru stylu ikon. Nie zapisano zmian."))
         }
         let oldRegistry = try registry()
         var newRegistry = oldRegistry
@@ -167,14 +167,14 @@ struct Cache {
         }
         let saved = try backup(); var changed: [String] = []; var registryChanged = false
         do {
-            guard !safariRunning else { throw fail("Safari zostało otwarte podczas przygotowania.") }
+            guard !safariRunning else { throw fail(l10n("Safari zostało otwarte podczas przygotowania.")) }
             for (host, item) in pending {
-                guard !safariRunning else { throw fail("Safari zostało otwarte podczas zapisu.") }
+                guard !safariRunning else { throw fail(l10n("Safari zostało otwarte podczas zapisu.")) }
                 if byHost[host]?.existing != item.png { changed.append(host); try item.png.write(to: icon(host), options: .atomic) }
             }
-            guard !safariRunning else { throw fail("Safari zostało otwarte podczas zapisu.") }
+            guard !safariRunning else { throw fail(l10n("Safari zostało otwarte podczas zapisu.")) }
             if oldRegistry != newRegistry { try saveRegistry(newRegistry); registryChanged = true }
-            guard !safariRunning else { throw fail("Safari zostało otwarte podczas zapisu.") }
+            guard !safariRunning else { throw fail(l10n("Safari zostało otwarte podczas zapisu.")) }
             let statements = pending.keys.sorted().map { host -> String in
                 let assignment = iconDisplayAssignment(pending[host]?.display)
                 return "UPDATE cache_settings SET \(flag)=1, download_status_flags=1\(assignment) WHERE host=\(quote(host));"
@@ -183,16 +183,16 @@ struct Cache {
             return (saved, pending.count)
         } catch {
             var problems: [String] = []
-            if registryChanged { do { try saveRegistry(oldRegistry) } catch { problems.append("rejestr własnych ikon") } }
+            if registryChanged { do { try saveRegistry(oldRegistry) } catch { problems.append(l10n("rejestr własnych ikon")) } }
             for host in changed {
                 let before = saved.appendingPathComponent("Images").appendingPathComponent(hash(host)+".png")
                 do { if Cache.fm.fileExists(atPath: before.path) { try Data(contentsOf: before).write(to: icon(host), options: .atomic) } else if Cache.fm.fileExists(atPath: icon(host).path) { try Cache.fm.removeItem(at: icon(host)) } } catch { problems.append(host) }
             }
-            throw fail("Zapis przerwany: \(error.localizedDescription). Kopia: \(saved.path)" + (problems.isEmpty ? "" : " Nie udało się odtworzyć: \(problems.joined(separator: ", "))"))
+            throw fail(l10n("Zapis przerwany: {0}. Kopia: {1}", String(describing: error.localizedDescription), String(describing: saved.path)) + (problems.isEmpty ? "" : l10n(" Nie udało się odtworzyć: {0}", String(describing: problems.joined(separator: ", ")))))
         }
     }
     func reset(_ hosts: Set<String>, scope: FavoriteScope, trackedOnly: Bool) throws -> URL {
-        guard !hosts.isEmpty, !safariRunning else { throw fail("Zamknij Safari (⌘Q), a następnie ponów reset.") }
+        guard !hosts.isEmpty, !safariRunning else { throw fail(l10n("Zamknij Safari (⌘Q), a następnie ponów reset.")) }
         let flag = try schema()
         let sites = try scan().sites
         let byHost = Dictionary(uniqueKeysWithValues: sites.map { ($0.host, $0) })
@@ -200,52 +200,52 @@ struct Cache {
         var nextRegistry = oldRegistry
         // Never touch domains outside the requested scope or unknown/ambiguous rows.
         for host in hosts {
-            guard let site = byHost[host], site.registered, site.locations.contains(where: { scope.includes($0.folder) }) else { throw fail("Stan \(host) zmienił się. Przeskanuj ponownie.") }
+            guard let site = byHost[host], site.registered, site.locations.contains(where: { scope.includes($0.folder) }) else { throw fail(l10n("Stan {0} zmienił się. Przeskanuj ponownie.", String(describing: host))) }
             if trackedOnly {
-                guard let data = site.existing, oldRegistry[host] == iconDigest(data) else { throw fail("Ikona \(host) została zmieniona poza aplikacją. Przeskanuj ponownie.") }
+                guard let data = site.existing, oldRegistry[host] == iconDigest(data) else { throw fail(l10n("Ikona {0} została zmieniona poza aplikacją. Przeskanuj ponownie.", String(describing: host))) }
             }
             let path = icon(host)
             if let values = try? path.resourceValues(forKeys: [.isSymbolicLinkKey, .isRegularFileKey]) {
-                guard values.isSymbolicLink != true, values.isRegularFile == true else { throw fail("Nieprawidłowa ścieżka ikony: \(host).") }
-            } else if Cache.fm.fileExists(atPath: path.path) { throw fail("Nie można zweryfikować pliku: \(host).") }
+                guard values.isSymbolicLink != true, values.isRegularFile == true else { throw fail(l10n("Nieprawidłowa ścieżka ikony: {0}.", String(describing: host))) }
+            } else if Cache.fm.fileExists(atPath: path.path) { throw fail(l10n("Nie można zweryfikować pliku: {0}.", String(describing: host))) }
             nextRegistry.removeValue(forKey: host)
         }
-        guard sites.contains(where: { $0.registered && $0.existing != nil && $0.active }) else { throw fail("Nie potwierdzono mapowania cache dla tej wersji Safari.") }
+        guard sites.contains(where: { $0.registered && $0.existing != nil && $0.active }) else { throw fail(l10n("Nie potwierdzono mapowania cache dla tej wersji Safari.")) }
         let saved = try backup()
         var removed: [String] = []; var registryChanged = false
         do {
             for host in hosts.sorted() {
-                guard !safariRunning else { throw fail("Safari zostało otwarte podczas resetu.") }
+                guard !safariRunning else { throw fail(l10n("Safari zostało otwarte podczas resetu.")) }
                 let path = icon(host)
                 if Cache.fm.fileExists(atPath: path.path) { try Cache.fm.removeItem(at: path); removed.append(host) }
             }
             if nextRegistry != oldRegistry { try saveRegistry(nextRegistry); registryChanged = true }
-            guard !safariRunning else { throw fail("Safari zostało otwarte podczas resetu.") }
+            guard !safariRunning else { throw fail(l10n("Safari zostało otwarte podczas resetu.")) }
             let statements = hosts.sorted().map { "UPDATE cache_settings SET \(flag)=0, download_status_flags=0 WHERE host=\(quote($0));" }.joined(separator: "\n")
             _ = try sql(db, "BEGIN IMMEDIATE;\n" + statements + "\nCOMMIT;", write: true)
             return saved
         } catch {
             var problems: [String] = []
-            if registryChanged { do { try saveRegistry(oldRegistry) } catch { problems.append("rejestr własnych ikon") } }
+            if registryChanged { do { try saveRegistry(oldRegistry) } catch { problems.append(l10n("rejestr własnych ikon")) } }
             for host in removed {
                 let file = saved.appendingPathComponent("Images").appendingPathComponent(hash(host)+".png")
                 do { try Data(contentsOf: file).write(to: icon(host), options: .atomic) } catch { problems.append(host) }
             }
-            throw fail("Reset przerwany: \(error.localizedDescription). Kopia: \(saved.path)" + (problems.isEmpty ? "" : " Nie odtworzono: " + problems.joined(separator: ", ")))
+            throw fail(l10n("Reset przerwany: {0}. Kopia: {1}", String(describing: error.localizedDescription), String(describing: saved.path)) + (problems.isEmpty ? "" : l10n(" Nie odtworzono: ") + problems.joined(separator: ", ")))
         }
     }
     func restore(_ saved: URL) throws -> URL {
         _ = try schema()
-        guard !safariRunning else { throw fail("Zamknij Safari (⌘Q).") }
-        guard saved.deletingLastPathComponent().standardizedFileURL == backups.standardizedFileURL, UUID(uuidString: saved.lastPathComponent) != nil, Cache.fm.fileExists(atPath: saved.appendingPathComponent("TouchIconCacheSettings.db").path) else { throw fail("Wybierz prawidłową kopię aplikacji.") }
-        guard !safariRunning else { throw fail("Zamknij Safari.") }
+        guard !safariRunning else { throw fail(l10n("Zamknij Safari (⌘Q).")) }
+        guard saved.deletingLastPathComponent().standardizedFileURL == backups.standardizedFileURL, UUID(uuidString: saved.lastPathComponent) != nil, Cache.fm.fileExists(atPath: saved.appendingPathComponent("TouchIconCacheSettings.db").path) else { throw fail(l10n("Wybierz prawidłową kopię aplikacji.")) }
+        guard !safariRunning else { throw fail(l10n("Zamknij Safari.")) }
         let staged = safari.appendingPathComponent("SIF-stage-\(UUID().uuidString)"); let displaced = backups.appendingPathComponent(UUID().uuidString)
         try Cache.fm.copyItem(at: saved, to: staged)
         defer { try? Cache.fm.removeItem(at: staged) }
-        guard !safariRunning else { throw fail("Safari zostało otwarte.") }
+        guard !safariRunning else { throw fail(l10n("Safari zostało otwarte.")) }
         try Cache.fm.moveItem(at: cache, to: displaced)
         do { try Cache.fm.moveItem(at: staged, to: cache) } catch {
-            do { try Cache.fm.moveItem(at: displaced, to: cache) } catch { throw fail("Nie udało się odtworzyć bieżącej pamięci. Zachowano ją w \(displaced.path).") }; throw error
+            do { try Cache.fm.moveItem(at: displaced, to: cache) } catch { throw fail(l10n("Nie udało się odtworzyć bieżącej pamięci. Zachowano ją w {0}.", String(describing: displaced.path))) }; throw error
         }
         return displaced
     }
@@ -304,7 +304,7 @@ func fetchIcon(_ host: String) async -> Pending? {
     @State private var showAbout = false
     @State private var gridMode = true
     @State private var folders: [FavoriteFolder] = []; @State private var scope: FavoriteScope = .root
-    @State private var selected: String?; @State private var filter = "Wszystkie"; @State private var search = ""; @State private var message = "Przeskanuj Ulubione Safari. Nic nie zostanie zmienione."; @State private var busy = false; @State private var confirm = false; @State private var confirmRestore = false; @State private var chosenBackup: URL?
+    @State private var selected: String?; @State private var filter = l10n("Wszystkie"); @State private var search = ""; @State private var message = l10n("Przeskanuj Ulubione Safari. Nic nie zostanie zmienione."); @State private var busy = false; @State private var confirm = false; @State private var confirmRestore = false; @State private var chosenBackup: URL?
     @State private var permissionDenied = false
     @State private var showPermission = false
     @State private var waitingForPermission = false
@@ -325,7 +325,7 @@ func fetchIcon(_ host: String) async -> Pending? {
             let saved = try store.reset(resetHosts, scope: resetScope, trackedOnly: resetTrackedOnly)
             for host in resetHosts { pending.removeValue(forKey: host); replacements.remove(host); marked.remove(host) }
             let count = resetHosts.count
-            scan(); message = "Zresetowano \(count) ikon. Otwórz Safari; w razie potrzeby odwiedź strony, aby pobrać oryginalne ikony. Kopia: \(saved.lastPathComponent)."
+            scan(); message = l10n("Zresetowano {0} ikon. Otwórz Safari; w razie potrzeby odwiedź strony, aby pobrać oryginalne ikony. Kopia: {1}.", String(describing: count), String(describing: saved.lastPathComponent))
         } catch { handleOperationError(error) }
     }
     var scoped: [Site] {
@@ -343,24 +343,24 @@ func fetchIcon(_ host: String) async -> Pending? {
         }
         return result
     }
-    var shown: [Site] { scoped.filter { s in (filter == "Wszystkie" || (filter == "Brakujące" && s.needsRepair) || (filter == "Gotowe" && pending[s.host] != nil) || (filter == "Własne" && customHosts.contains(s.host))) && (search.isEmpty || (s.title + s.host).localizedCaseInsensitiveContains(search)) } }
+    var shown: [Site] { scoped.filter { s in (filter == l10n("Wszystkie") || (filter == l10n("Brakujące") && s.needsRepair) || (filter == l10n("Gotowe") && pending[s.host] != nil) || (filter == l10n("Własne") && customHosts.contains(s.host))) && (search.isEmpty || (s.title + s.host).localizedCaseInsensitiveContains(search)) } }
     var missing: [Site] { scoped.filter { $0.registered && $0.needsRepair && pending[$0.host] == nil } }
     var markedSites: [Site] { scoped.filter { marked.contains($0.host) && $0.registered } }
     var scopedPending: [String: Pending] { pending.filter { pair in scoped.contains { $0.host == pair.key } } }
     var site: Site? { shown.first { $0.host == selected } }
-    var scopeLabel: String { switch scope { case .all: return "Wszystkie Ulubione"; case .root: return "Bez folderu"; case .folder: return folders.first { $0.scope == scope }?.label ?? "Folder" } }
+    var scopeLabel: String { switch scope { case .all: return l10n("Wszystkie Ulubione"); case .root: return l10n("Bez folderu"); case .folder: return folders.first { $0.scope == scope }?.label ?? l10n("Folder") } }
     func openPrivacySettings() {
         waitingForPermission = true
-        permissionHelp = "Włącz dostęp dla Safari Icon Fixer, a następnie wróć tutaj. Jeśli dostęp nadal nie działa, zamknij aplikację (⌘Q) i uruchom ją ponownie."
+        permissionHelp = l10n("Włącz dostęp dla Safari Icon Fixer, a następnie wróć tutaj. Jeśli dostęp nadal nie działa, zamknij aplikację (⌘Q) i uruchom ją ponownie.")
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"), NSWorkspace.shared.open(url) { return }
         if let url = URL(string: "x-apple.systempreferences:") { _ = NSWorkspace.shared.open(url) }
-        permissionHelp = "Otwórz Prywatność i ochrona → Pełny dostęp do dysku. Jeśli ustawienia nie otworzyły się automatycznie, uruchom je z menu Apple."
+        permissionHelp = l10n("Otwórz Prywatność i ochrona → Pełny dostęp do dysku. Jeśli ustawienia nie otworzyły się automatycznie, uruchom je z menu Apple.")
     }
     func reportPermission(_ error: Error, present: Bool = true) {
         permissionDenied = true
         if present { showPermission = true }
-        message = "Brak dostępu do danych Safari: \(error.localizedDescription)"
-        permissionHelp = "Jeśli dostęp jest już włączony, zamknij aplikację (⌘Q) i uruchom ją ponownie."
+        message = l10n("Brak dostępu do danych Safari: {0}", String(describing: error.localizedDescription))
+        permissionHelp = l10n("Jeśli dostęp jest już włączony, zamknij aplikację (⌘Q) i uruchom ją ponownie.")
     }
     func handleOperationError(_ error: Error) {
         if isSafariPermissionError(error) { reportPermission(error) }
@@ -379,7 +379,7 @@ func fetchIcon(_ host: String) async -> Pending? {
             if case .folder = scope, !folders.contains(where: { $0.scope == scope }) { scope = .root }
             let hosts = Set(sites.map(\.host)); pending = pending.filter { hosts.contains($0.key) }; replacements.formIntersection(hosts); marked.formIntersection(hosts)
             permissionDenied = false; showPermission = false; waitingForPermission = false; permissionHelp = ""
-            message = "Odczytano \(sites.count) domen w Ulubionych. W wybranym zakresie: \(scoped.count)."
+            message = l10n("Odczytano {0} domen w Ulubionych. W wybranym zakresie: {1}.", String(describing: sites.count), String(describing: scoped.count))
         } catch {
             sites = []; folders = []; selected = nil; customHosts = []
             if isSafariPermissionError(error) {
@@ -387,24 +387,24 @@ func fetchIcon(_ host: String) async -> Pending? {
             } else {
                 permissionDenied = false; showPermission = false; waitingForPermission = false
                 pending = [:]; replacements = []; marked = []; scope = .root
-                message = "Nie można odczytać Safari: \(error.localizedDescription)"
+                message = l10n("Nie można odczytać Safari: {0}", String(describing: error.localizedDescription))
             }
         }
     }
     func prepareDisplay(_ targets: [Site], style: SafariIconDisplay) {
         guard !busy, !permissionDenied else { return }
         do {
-            guard try store.hasDisplayColumn() else { throw fail("Brak parametru stylu w tej wersji Safari. Nic nie zmieniono.") }
+            guard try store.hasDisplayColumn() else { throw fail(l10n("Brak parametru stylu w tej wersji Safari. Nic nie zmieniono.")) }
             var count = 0
             for site in targets where site.registered {
                 guard let data = pending[site.host]?.png ?? site.existing else { continue }
                 let previous = pending[site.host]
                 let expected = previous?.expectedDigest ?? site.existing.map(iconDigest)
-                pending[site.host] = Pending(png: data, source: (previous.map { $0.source + " · " } ?? "Zachowano obraz · ") + style.label, custom: true, display: style, expectedDigest: expected)
+                pending[site.host] = Pending(png: data, source: (previous.map { $0.source + " · " } ?? l10n("Zachowano obraz · ")) + style.label, custom: true, display: style, expectedDigest: expected)
                 replacements.insert(site.host)
                 count += 1
             }
-            message = "Przygotowano styl dla \(count) ikon (bez pobierania). Zamknij Safari i kliknij Zastosuj."
+            message = l10n("Przygotowano styl dla {0} ikon (bez pobierania). Zamknij Safari i kliknij Zastosuj.", String(describing: count))
         } catch { handleOperationError(error) }
     }
     func prepare() { prepareSites(missing) }
@@ -415,10 +415,10 @@ func fetchIcon(_ host: String) async -> Pending? {
         Task {
             var failures = 0
             for (i, site) in targets.enumerated() {
-                message = "Przygotowanie \(i+1)/\(targets.count): \(site.host)"
+                message = l10n("Przygotowanie {0}/{1}: {2}", String(describing: i+1), String(describing: targets.count), String(describing: site.host))
                 guard site.registered else { failures += 1; continue }
                 if let existing = site.existing, let (png, _) = safePNG(existing) {
-                    pending[site.host] = Pending(png: png, source: "Ikona z cache — ponowny zapis PNG 256 × 256 i aktywacja")
+                    pending[site.host] = Pending(png: png, source: l10n("Ikona z cache — ponowny zapis PNG 256 × 256 i aktywacja"))
                     replacements.insert(site.host)
                 } else if let p = await fetchIcon(site.host) {
                     pending[site.host] = p
@@ -426,7 +426,7 @@ func fetchIcon(_ host: String) async -> Pending? {
                 } else { failures += 1 }
             }
             busy = false
-            message = "Przygotowano \(scopedPending.count) ikon w zakresie. Nie zmieniono Safari. Niepowodzenia: \(failures)."
+            message = l10n("Przygotowano {0} ikon w zakresie. Nie zmieniono Safari. Niepowodzenia: {1}.", String(describing: scopedPending.count), String(describing: failures))
         }
     }
     func toggleMarked(_ host: String, _ value: Bool) {
@@ -436,31 +436,31 @@ func fetchIcon(_ host: String) async -> Pending? {
         HStack(spacing: 10) {
             Toggle("", isOn: Binding(get: { marked.contains(site.host) }, set: { toggleMarked(site.host, $0) }))
                 .toggleStyle(.checkbox).labelsHidden().disabled(busy || !site.registered)
-                .help("Zaznacz do wymuszonej naprawy")
+                .help(l10n("Zaznacz do wymuszonej naprawy"))
             tile(site.existing, fallback: site.title, size: 36)
             VStack(alignment: .leading) {
                 Text(site.title).lineLimit(1)
                 Text(site.host).font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
-            Text(pending[site.host] != nil ? "Gotowa" : (customHosts.contains(site.host) ? "Własna" : site.status))
+            Text(pending[site.host] != nil ? l10n("Gotowa") : (customHosts.contains(site.host) ? l10n("Własna") : site.status))
                 .font(.caption).foregroundStyle(pending[site.host] != nil ? Color.green : Color.secondary)
         }
     }
     func cacheDetails(_ site: Site) -> String {
-        let flags = site.downloadFlags.map { String($0) } ?? "brak"
-        let size = site.pixelSize.map { "\($0) px" } ?? "brak"
-        let display = site.displayCode.map { code in SafariIconDisplay(rawValue: code)?.label ?? "Kod \(code)" } ?? "Nieznany"
-        return "Cache: \(size) · aktywna: \(site.active ? "tak" : "nie") · status: \(flags) · styl: \(display)"
+        let flags = site.downloadFlags.map { String($0) } ?? l10n("brak")
+        let size = site.pixelSize.map { "\($0) px" } ?? l10n("brak")
+        let display = site.displayCode.map { code in SafariIconDisplay(rawValue: code)?.label ?? l10n("Kod {0}", String(describing: code)) } ?? l10n("Nieznany")
+        return l10n("Cache: {0} · aktywna: {1} · status: {2} · styl: {3}", String(describing: size), String(describing: site.active ? l10n("tak") : l10n("nie")), String(describing: flags), String(describing: display))
     }
-    func choose(_ s: Site) { let panel = NSOpenPanel(); panel.allowedContentTypes = [.image]; panel.canChooseDirectories = false; guard panel.runModal() == .OK, let url = panel.url else { return }; do { let data = try Data(contentsOf: url); guard let (png,_) = safePNG(data) else { throw fail("Nieobsługiwany lub uszkodzony obraz (limit 8 MB).") }; pending[s.host] = Pending(png: png,source:url.lastPathComponent, custom: true, display: hasTransparentPixels(png) ? .systemTile : .fullTile); if s.existing != nil { replacements.insert(s.host) }; message = "Przygotowano własną ikonę. Zmiana wymaga zatwierdzenia." } catch { message = error.localizedDescription } }
+    func choose(_ s: Site) { let panel = NSOpenPanel(); panel.allowedContentTypes = [.image]; panel.canChooseDirectories = false; guard panel.runModal() == .OK, let url = panel.url else { return }; do { let data = try Data(contentsOf: url); guard let (png,_) = safePNG(data) else { throw fail(l10n("Nieobsługiwany lub uszkodzony obraz (limit 8 MB).")) }; pending[s.host] = Pending(png: png,source:url.lastPathComponent, custom: true, display: hasTransparentPixels(png) ? .systemTile : .fullTile); if s.existing != nil { replacements.insert(s.host) }; message = l10n("Przygotowano własną ikonę. Zmiana wymaga zatwierdzenia.") } catch { message = error.localizedDescription } }
     func write() {
         guard !permissionDenied else { showPermission = true; return }
         let batch = scopedPending
         do {
             let (backup,count) = try store.apply(batch,allowingReplacement:replacements,scope:scope)
             for host in batch.keys { pending.removeValue(forKey:host); replacements.remove(host); marked.remove(host) }
-            scan(); message = "Zapisano \(count) ikon. Kopia: \(backup.lastPathComponent). Otwórz Safari i sprawdź efekt."
+            scan(); message = l10n("Zapisano {0} ikon. Kopia: {1}. Otwórz Safari i sprawdź efekt.", String(describing: count), String(describing: backup.lastPathComponent))
         } catch { handleOperationError(error) }
     }
     func selectBackup() { let p = NSOpenPanel(); p.directoryURL = store.backups; p.canChooseDirectories = true; p.canChooseFiles = false; guard p.runModal() == .OK, let u = p.url else {return}; chosenBackup = u; confirmRestore = true }
@@ -468,7 +468,7 @@ func fetchIcon(_ host: String) async -> Pending? {
     private var purple: Color { Color(red: 0.55, green: 0.34, blue: 0.91) }
     private var surface: Color { Color(nsColor: .controlBackgroundColor) }
     private func scopeButton(_ label: String, symbol: String, value: FavoriteScope, depth: Int = 0) -> some View {
-        Button { scope = value; filter = "Wszystkie" } label: {
+        Button { scope = value; filter = l10n("Wszystkie") } label: {
             HStack(spacing: 8) {
                 Image(systemName: symbol).foregroundStyle(scope == value ? purple : Color.secondary).frame(width: 17)
                 Text(label).font(.callout).lineLimit(1).truncationMode(.tail)
@@ -487,10 +487,10 @@ func fetchIcon(_ host: String) async -> Pending? {
                     Text("Safari • \(AppReleaseInfo.version)").font(.caption).foregroundStyle(.secondary)
                 }
             }.padding(.bottom, 4)
-            Text("BIBLIOTEKA").font(.caption2.weight(.semibold)).tracking(1.1).foregroundStyle(.secondary)
-            scopeButton("Bez folderu", symbol: "star", value: .root)
-            scopeButton("Wszystkie Ulubione", symbol: "square.grid.2x2", value: .all)
-            Text("FOLDERY").font(.caption2.weight(.semibold)).tracking(1.1).foregroundStyle(.secondary).padding(.top, 5)
+            Text(l10n("BIBLIOTEKA")).font(.caption2.weight(.semibold)).tracking(1.1).foregroundStyle(.secondary)
+            scopeButton(l10n("Bez folderu"), symbol: "star", value: .root)
+            scopeButton(l10n("Wszystkie Ulubione"), symbol: "square.grid.2x2", value: .all)
+            Text(l10n("FOLDERY")).font(.caption2.weight(.semibold)).tracking(1.1).foregroundStyle(.secondary).padding(.top, 5)
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 2) {
                     ForEach(folders) { folder in
@@ -499,14 +499,14 @@ func fetchIcon(_ host: String) async -> Pending? {
                 }
             }
             Divider()
-            Button { selectBackup() } label: { Label("Kopie zapasowe", systemImage: "clock.arrow.circlepath") }.buttonStyle(.plain).disabled(busy || permissionDenied)
-            Button { if permissionDenied { showPermission = true } else { openPrivacySettings() } } label: { Label("Uprawnienia", systemImage: "gearshape") }.buttonStyle(.plain)
+            Button { selectBackup() } label: { Label(l10n("Kopie zapasowe"), systemImage: "clock.arrow.circlepath") }.buttonStyle(.plain).disabled(busy || permissionDenied)
+            Button { if permissionDenied { showPermission = true } else { openPrivacySettings() } } label: { Label(l10n("Uprawnienia"), systemImage: "gearshape") }.buttonStyle(.plain)
             Button {
                 if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Safari") { NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration(), completionHandler: nil) }
-            } label: { Label("Otwórz Safari", systemImage: "safari") }.buttonStyle(.plain)
-            Button { showAbout = true } label: { Label("O aplikacji", systemImage: "info.circle") }.buttonStyle(.plain)
+            } label: { Label(l10n("Otwórz Safari"), systemImage: "safari") }.buttonStyle(.plain)
+            Button { showAbout = true } label: { Label(l10n("O aplikacji"), systemImage: "info.circle") }.buttonStyle(.plain)
             if updates.available != nil {
-                Button { showAbout = true } label: { Label("Nowa wersja", systemImage: "arrow.down.circle.fill") }
+                Button { showAbout = true } label: { Label(l10n("Nowa wersja"), systemImage: "arrow.down.circle.fill") }
                     .buttonStyle(.plain).foregroundStyle(purple)
             }
         }.padding(12).frame(width: 180).frame(maxHeight: .infinity, alignment: .topLeading)
@@ -529,56 +529,56 @@ func fetchIcon(_ host: String) async -> Pending? {
             HStack(alignment: .center, spacing: 8) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(scopeLabel).font(.system(size: 24, weight: .semibold)).lineLimit(1)
-                    Text("Zarządzaj ikonami na stronie startowej Safari").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    Text(l10n("Zarządzaj ikonami na stronie startowej Safari")).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Spacer(minLength: 5)
-                Button(action: scan) { Image(systemName: "arrow.clockwise") }.help("Przeskanuj Ulubione").disabled(busy)
-                Button { confirm = true } label: { Label("Zastosuj (\(scopedPending.count))", systemImage: "checkmark") }
+                Button(action: scan) { Image(systemName: "arrow.clockwise") }.help(l10n("Przeskanuj Ulubione")).disabled(busy)
+                Button { confirm = true } label: { Label(l10n("Zastosuj ({0})", String(describing: scopedPending.count)), systemImage: "checkmark") }
                     .buttonStyle(.borderedProminent).disabled(busy || permissionDenied || scopedPending.isEmpty)
             }
             HStack(spacing: 8) {
-                metric(scoped.count, "Domeny", "square.grid.2x2", purple)
-                metric(scoped.filter { $0.existing != nil }.count, "W cache", "photo", .secondary)
-                metric(scoped.filter { $0.needsRepair }.count, "Do sprawdzenia", "exclamationmark.circle", .orange)
-                metric(scopedPending.count, "Gotowe", "checkmark.circle", .green)
+                metric(scoped.count, l10n("Domeny"), "square.grid.2x2", purple)
+                metric(scoped.filter { $0.existing != nil }.count, l10n("W cache"), "photo", .secondary)
+                metric(scoped.filter { $0.needsRepair }.count, l10n("Do sprawdzenia"), "exclamationmark.circle", .orange)
+                metric(scopedPending.count, l10n("Gotowe"), "checkmark.circle", .green)
             }
         }.fixedSize(horizontal: false, vertical: true)
     }
     private var resetMenu: some View {
         Menu {
-            Button("Reset zaznaczonych (\(markedSites.count))") { requestReset(Set(markedSites.map { $0.host }), in: scope) }.disabled(markedSites.isEmpty)
-            Button("Reset własnych w zakresie (\(scopedCustom.count))") { requestReset(scopedCustom, in: scope, trackedOnly: true) }.disabled(scopedCustom.isEmpty)
-            Button("Reset wszystkich własnych (\(customHosts.count))") { requestReset(customHosts, in: .all, trackedOnly: true) }.disabled(customHosts.isEmpty)
-        } label: { Label("Reset", systemImage: "arrow.uturn.backward") }.disabled(busy || permissionDenied)
+            Button(l10n("Reset zaznaczonych ({0})", String(describing: markedSites.count))) { requestReset(Set(markedSites.map { $0.host }), in: scope) }.disabled(markedSites.isEmpty)
+            Button(l10n("Reset własnych w zakresie ({0})", String(describing: scopedCustom.count))) { requestReset(scopedCustom, in: scope, trackedOnly: true) }.disabled(scopedCustom.isEmpty)
+            Button(l10n("Reset wszystkich własnych ({0})", String(describing: customHosts.count))) { requestReset(customHosts, in: .all, trackedOnly: true) }.disabled(customHosts.isEmpty)
+        } label: { Label(l10n("Reset"), systemImage: "arrow.uturn.backward") }.disabled(busy || permissionDenied)
     }
     private var controls: some View {
         VStack(alignment: .leading, spacing: 9) {
             HStack(spacing: 8) {
                 HStack(spacing: 6) {
                     Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                    TextField("Szukaj strony…", text: $search).textFieldStyle(.plain)
+                    TextField(l10n("Szukaj strony…"), text: $search).textFieldStyle(.plain)
                     if !search.isEmpty { Button { search = "" } label: { Image(systemName: "xmark.circle.fill") }.buttonStyle(.plain).foregroundStyle(.secondary) }
                 }.padding(8).background(surface, in: RoundedRectangle(cornerRadius: 8))
-                Picker("Status", selection: $filter) {
-                    ForEach(["Wszystkie", "Brakujące", "Gotowe", "Własne"], id: \.self) { Text($0).tag($0) }
-                }.labelsHidden().frame(width: 115)
-                Picker("Widok", selection: $gridMode) {
+                Picker(l10n("Status"), selection: $filter) {
+                    ForEach([l10n("Wszystkie"), l10n("Brakujące"), l10n("Gotowe"), l10n("Własne")], id: \.self) { Text($0).tag($0) }
+                }.labelsHidden().frame(width: 132)
+                Picker(l10n("Widok"), selection: $gridMode) {
                     Image(systemName: "square.grid.2x2").tag(true)
                     Image(systemName: "list.bullet").tag(false)
                 }.pickerStyle(.segmented).labelsHidden().frame(width: 76)
             }
             HStack(spacing: 7) {
                 Menu {
-                    Button("Zaznacz widoczne") { marked.formUnion(shown.filter { $0.registered }.map { $0.host }) }
-                    Button("Odznacz w zakresie") { marked.subtract(scoped.map { $0.host }) }
-                } label: { Label("Zaznaczenie (\(markedSites.count))", systemImage: "checkmark.square") }.disabled(busy)
+                    Button(l10n("Zaznacz widoczne")) { marked.formUnion(shown.filter { $0.registered }.map { $0.host }) }
+                    Button(l10n("Odznacz w zakresie")) { marked.subtract(scoped.map { $0.host }) }
+                } label: { Label(l10n("Zaznaczenie ({0})", String(describing: markedSites.count)), systemImage: "checkmark.square") }.disabled(busy)
                 Spacer(minLength: 0)
-                Button(action: prepare) { Image(systemName: "arrow.down.circle") }.help("Pobierz brakujące ikony").disabled(busy || permissionDenied || missing.isEmpty)
-                Button(action: prepareMarked) { Label("Napraw", systemImage: "wand.and.stars") }.disabled(busy || markedSites.isEmpty)
+                Button(action: prepare) { Image(systemName: "arrow.down.circle") }.help(l10n("Pobierz brakujące ikony")).disabled(busy || permissionDenied || missing.isEmpty)
+                Button(action: prepareMarked) { Label(l10n("Napraw"), systemImage: "wand.and.stars") }.disabled(busy || markedSites.isEmpty)
                 Menu {
-                    Button("Pełny kafelek — bez szarej ramki") { prepareDisplay(markedSites, style: .fullTile) }
-                    Button("Tło systemowe") { prepareDisplay(markedSites, style: .systemTile) }
-                } label: { Label("Styl", systemImage: "square.inset.filled") }.disabled(busy || markedSites.isEmpty)
+                    Button(l10n("Pełny kafelek — bez szarej ramki")) { prepareDisplay(markedSites, style: .fullTile) }
+                    Button(l10n("Tło systemowe")) { prepareDisplay(markedSites, style: .systemTile) }
+                } label: { Label(l10n("Styl"), systemImage: "square.inset.filled") }.disabled(busy || markedSites.isEmpty)
                 resetMenu
             }.controlSize(.small)
         }.fixedSize(horizontal: false, vertical: true)
@@ -608,8 +608,8 @@ func fetchIcon(_ host: String) async -> Pending? {
             if shown.isEmpty {
                 VStack(spacing: 9) {
                     Image(systemName: "square.grid.2x2").font(.system(size: 29)).foregroundStyle(.secondary)
-                    Text("Brak ikon w tym widoku").font(.headline)
-                    Text("Zmień filtr lub zakres Ulubionych.").font(.caption).foregroundStyle(.secondary)
+                    Text(l10n("Brak ikon w tym widoku")).font(.headline)
+                    Text(l10n("Zmień filtr lub zakres Ulubionych.")).font(.caption).foregroundStyle(.secondary)
                 }.frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if gridMode {
                 ScrollView {
@@ -625,7 +625,7 @@ func fetchIcon(_ host: String) async -> Pending? {
     }
     @ViewBuilder private func detail(_ s: Site) -> some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("EDYTOR IKONY").font(.caption2.weight(.semibold)).tracking(1.1).foregroundStyle(.secondary)
+            Text(l10n("EDYTOR IKONY")).font(.caption2.weight(.semibold)).tracking(1.1).foregroundStyle(.secondary)
             VStack(spacing: 8) {
                 tile(pending[s.host]?.png ?? s.existing, fallback: s.title, size: 100)
                     .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous)).shadow(color: .black.opacity(0.12), radius: 8, y: 4)
@@ -633,30 +633,30 @@ func fetchIcon(_ host: String) async -> Pending? {
                 Text(s.host).font(.caption).foregroundStyle(.secondary).textSelection(.enabled).lineLimit(2)
             }.frame(maxWidth: .infinity).padding(.vertical, 10)
             if pending[s.host] != nil {
-                HStack { Image(systemName: "checkmark.circle.fill").foregroundStyle(.green); Text("Gotowa do zapisania").font(.caption) }
+                HStack { Image(systemName: "checkmark.circle.fill").foregroundStyle(.green); Text(l10n("Gotowa do zapisania")).font(.caption) }
             }
-            Button { iconEditor = s } label: { Label("Edytuj lub znajdź", systemImage: "wand.and.stars").frame(maxWidth: .infinity) }
+            Button { iconEditor = s } label: { Label(l10n("Edytuj lub znajdź"), systemImage: "wand.and.stars").frame(maxWidth: .infinity) }
                 .buttonStyle(.borderedProminent).controlSize(.large).disabled(busy || !s.registered)
-            Button { prepareSites([s]) } label: { Label("Wymuś naprawę", systemImage: "arrow.clockwise").frame(maxWidth: .infinity, alignment: .leading) }.disabled(busy || !s.registered)
-            Button { choose(s) } label: { Label("Importuj grafikę", systemImage: "square.and.arrow.down").frame(maxWidth: .infinity, alignment: .leading) }.disabled(busy || !s.registered)
+            Button { prepareSites([s]) } label: { Label(l10n("Wymuś naprawę"), systemImage: "arrow.clockwise").frame(maxWidth: .infinity, alignment: .leading) }.disabled(busy || !s.registered)
+            Button { choose(s) } label: { Label(l10n("Importuj grafikę"), systemImage: "square.and.arrow.down").frame(maxWidth: .infinity, alignment: .leading) }.disabled(busy || !s.registered)
             Menu {
-                Button("Pełny kafelek — bez szarej ramki") { prepareDisplay([s], style: .fullTile) }
-                Button("Tło systemowe") { prepareDisplay([s], style: .systemTile) }
-            } label: { Label("Styl w Safari", systemImage: "square.inset.filled").frame(maxWidth: .infinity, alignment: .leading) }.disabled(busy || !s.registered || (pending[s.host] == nil && s.existing == nil))
+                Button(l10n("Pełny kafelek — bez szarej ramki")) { prepareDisplay([s], style: .fullTile) }
+                Button(l10n("Tło systemowe")) { prepareDisplay([s], style: .systemTile) }
+            } label: { Label(l10n("Styl w Safari"), systemImage: "square.inset.filled").frame(maxWidth: .infinity, alignment: .leading) }.disabled(busy || !s.registered || (pending[s.host] == nil && s.existing == nil))
             if pending[s.host] != nil {
-                Button("Odrzuć zmianę") { pending.removeValue(forKey: s.host); replacements.remove(s.host) }.disabled(busy)
+                Button(l10n("Odrzuć zmianę")) { pending.removeValue(forKey: s.host); replacements.remove(s.host) }.disabled(busy)
             }
             Divider()
             VStack(alignment: .leading, spacing: 6) {
-                Text("Informacje").font(.headline)
-                Text(customHosts.contains(s.host) ? "Własna ikona" : s.status).font(.callout)
+                Text(l10n("Informacje")).font(.headline)
+                Text(customHosts.contains(s.host) ? l10n("Własna ikona") : s.status).font(.callout)
                 Text(cacheDetails(s)).font(.caption).foregroundStyle(.secondary)
-                Text(Array(Set(s.locations.map { $0.folderTitles.isEmpty ? "Bez folderu" : $0.folderTitles.joined(separator: " / ") })).sorted().joined(separator: " · ")).font(.caption).foregroundStyle(.secondary).lineLimit(3)
-                if s.locations.contains(where: { !scope.includes($0.folder) }) { Text("Wspólna ikona także poza tym zakresem.").font(.caption).foregroundStyle(.orange) }
+                Text(Array(Set(s.locations.map { $0.folderTitles.isEmpty ? l10n("Bez folderu") : $0.folderTitles.joined(separator: " / ") })).sorted().joined(separator: " · ")).font(.caption).foregroundStyle(.secondary).lineLimit(3)
+                if s.locations.contains(where: { !scope.includes($0.folder) }) { Text(l10n("Wspólna ikona także poza tym zakresem.")).font(.caption).foregroundStyle(.orange) }
                 if let p = pending[s.host] { Text(p.source).font(.caption).foregroundStyle(.secondary).lineLimit(2) }
-                if !s.registered { Text("Otwórz stronę w Safari i przeskanuj ponownie.").font(.caption).foregroundStyle(.secondary) }
+                if !s.registered { Text(l10n("Otwórz stronę w Safari i przeskanuj ponownie.")).font(.caption).foregroundStyle(.secondary) }
             }
-            Button(role: .destructive) { requestReset([s.host], in: scope) } label: { Label("Resetuj ikonę Safari", systemImage: "arrow.uturn.backward") }.buttonStyle(.plain).foregroundStyle(.red).disabled(busy || !s.registered)
+            Button(role: .destructive) { requestReset([s.host], in: scope) } label: { Label(l10n("Resetuj ikonę Safari"), systemImage: "arrow.uturn.backward") }.buttonStyle(.plain).foregroundStyle(.red).disabled(busy || !s.registered)
         }.frame(maxWidth: .infinity, alignment: .topLeading)
     }
     private var inspector: some View {
@@ -665,18 +665,18 @@ func fetchIcon(_ host: String) async -> Pending? {
             else {
                 VStack(spacing: 12) {
                     Image(systemName: "photo.on.rectangle.angled").font(.system(size: 32)).foregroundStyle(.secondary)
-                    Text("Wybierz ikonę").font(.headline)
-                    Text("Zmieniaj obraz, tło i margines w edytorze.").font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    Text(l10n("Wybierz ikonę")).font(.headline)
+                    Text(l10n("Zmieniaj obraz, tło i margines w edytorze.")).font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 }.frame(maxWidth: .infinity).padding(.top, 40)
             }
-        }.padding(14).frame(width: 234).frame(maxHeight: .infinity).background(.regularMaterial)
+        }.padding(14).frame(width: 254).frame(maxHeight: .infinity).background(.regularMaterial)
     }
     private var footer: some View {
         HStack(spacing: 7) {
             if busy { ProgressView().controlSize(.small) } else { Image(systemName: "info.circle").foregroundStyle(.secondary) }
             Text(message).font(.caption).foregroundStyle(.secondary).lineLimit(2).help(message).textSelection(.enabled)
             Spacer(minLength: 0)
-            Text("\(pending.count) zmian").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+            Text(l10n("{0} zmian", String(describing: pending.count))).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
         }.fixedSize(horizontal: false, vertical: true)
     }
     private var permissionSheet: some View {
@@ -685,26 +685,26 @@ func fetchIcon(_ host: String) async -> Pending? {
                 Image(nsImage: NSApplication.shared.applicationIconImage)
                     .resizable().scaledToFit().frame(width: 64, height: 64)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Wymagany dostęp do dysku").font(.title2.bold())
-                    Text("Safari Icon Fixer nie może odczytać lub zmienić pamięci ikon Safari.")
+                    Text(l10n("Wymagany dostęp do dysku")).font(.title2.bold())
+                    Text(l10n("Safari Icon Fixer nie może odczytać lub zmienić pamięci ikon Safari."))
                         .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
             }
             Divider()
-            Text("1. Otwórz Ustawienia systemowe → Prywatność i ochrona → Pełny dostęp do dysku.")
-            Text("2. Włącz Safari Icon Fixer na liście. Jeśli go nie ma, kliknij + i wybierz aplikację z folderu Aplikacje.")
-            Text("3. Wróć tutaj i sprawdź dostęp ponownie. Jeśli macOS poprosi o ponowne uruchomienie aplikacji, zaakceptuj.")
-            Text("To szerokie uprawnienie systemowe. Aplikacja używa go do lokalnego dostępu do zakładek i cache ikon Safari; możesz je później cofnąć.")
+            Text(l10n("1. Otwórz Ustawienia systemowe → Prywatność i ochrona → Pełny dostęp do dysku."))
+            Text(l10n("2. Włącz Safari Icon Fixer na liście. Jeśli go nie ma, kliknij + i wybierz aplikację z folderu Aplikacje."))
+            Text(l10n("3. Wróć tutaj i sprawdź dostęp ponownie. Jeśli macOS poprosi o ponowne uruchomienie aplikacji, zaakceptuj."))
+            Text(l10n("To szerokie uprawnienie systemowe. Aplikacja używa go do lokalnego dostępu do zakładek i cache ikon Safari; możesz je później cofnąć."))
                 .font(.caption).foregroundStyle(.secondary)
             if !permissionHelp.isEmpty {
                 Text(permissionHelp).font(.caption).foregroundStyle(.secondary)
             }
             HStack(spacing: 10) {
-                Button("Później") { waitingForPermission = false; showPermission = false }
+                Button(l10n("Później")) { waitingForPermission = false; showPermission = false }
                     .keyboardShortcut(.cancelAction)
                 Spacer()
-                Button("Sprawdź ponownie", action: scan)
-                Button("Otwórz ustawienia", action: openPrivacySettings)
+                Button(l10n("Sprawdź ponownie"), action: scan)
+                Button(l10n("Otwórz ustawienia"), action: openPrivacySettings)
                     .buttonStyle(.borderedProminent)
             }
         }
@@ -741,7 +741,7 @@ func fetchIcon(_ host: String) async -> Pending? {
                 guard scoped.contains(where: { $0.host == site.host && $0.registered }) else { return }
                 pending[site.host] = result
                 if site.existing != nil { replacements.insert(site.host) }
-                message = "Przygotowano ikonę: \(site.host). Kliknij Zastosuj, aby zapisać."
+                message = l10n("Przygotowano ikonę: {0}. Kliknij Zastosuj, aby zapisać.", String(describing: site.host))
             }
         }
         .sheet(isPresented: $showPermission, onDismiss: { waitingForPermission = false }) { permissionSheet }
@@ -751,23 +751,41 @@ func fetchIcon(_ host: String) async -> Pending? {
             Task { await updates.checkIfDue() }
         }
         .onChange(of: scope) { _ in selected = nil }
-        .alert("Zastosować przygotowane ikony?",isPresented:$confirm) { Button("Anuluj",role:.cancel){}; Button("Zapisz",action:write) } message: { Text("Zakres: \(scopeLabel). Zapis: \(scopedPending.count) ikon. Safari współdzieli ikony domen, więc zmiana może być widoczna również w innych folderach i poza Ulubionymi. Zamknij Safari przez ⌘Q. Przed zapisem powstanie kopia cache.") }
-        .alert("Zresetować \(resetHosts.count) ikon?", isPresented: $confirmReset) {
-            Button("Anuluj", role: .cancel) {}
-            Button("Resetuj", role: .destructive, action: executeReset)
+        .alert(l10n("Zastosować przygotowane ikony?"),isPresented:$confirm) { Button(l10n("Anuluj"),role:.cancel){}; Button(l10n("Zapisz"),action:write) } message: { Text(l10n("Zakres: {0}. Zapis: {1} ikon. Safari współdzieli ikony domen, więc zmiana może być widoczna również w innych folderach i poza Ulubionymi. Zamknij Safari przez ⌘Q. Przed zapisem powstanie kopia cache.", String(describing: scopeLabel), String(describing: scopedPending.count))) }
+        .alert(l10n("Zresetować {0} ikon?", String(describing: resetHosts.count)), isPresented: $confirmReset) {
+            Button(l10n("Anuluj"), role: .cancel) {}
+            Button(l10n("Resetuj"), role: .destructive, action: executeReset)
         } message: {
-            Text("Usunie zapisane ikony wybranych domen i umożliwi Safari ich ponowne pobranie. Dotyczy także wspólnych ikon w innych folderach. Zamknij Safari (⌘Q). Powstanie kopia. Zakładki i hasła pozostaną bez zmian.")
+            Text(l10n("Usunie zapisane ikony wybranych domen i umożliwi Safari ich ponowne pobranie. Dotyczy także wspólnych ikon w innych folderach. Zamknij Safari (⌘Q). Powstanie kopia. Zakładki i hasła pozostaną bez zmian."))
         }
-        .alert("Przywrócić cały cache ikon?",isPresented:$confirmRestore) { Button("Anuluj",role:.cancel){}; Button("Przywróć",role:.destructive) { if let saved = chosenBackup { do { let displaced = try store.restore(saved); pending = [:]; replacements = []; marked = []; scan(); message = "Przywrócono kopię. Poprzedni cache: \(displaced.lastPathComponent)." } catch {handleOperationError(error)} } } } message: { Text("Wymaga zamknięcia Safari. Bieżący folder również zostanie zachowany jako kopia.") }
+        .alert(l10n("Przywrócić cały cache ikon?"),isPresented:$confirmRestore) { Button(l10n("Anuluj"),role:.cancel){}; Button(l10n("Przywróć"),role:.destructive) { if let saved = chosenBackup { do { let displaced = try store.restore(saved); pending = [:]; replacements = []; marked = []; scan(); message = l10n("Przywrócono kopię. Poprzedni cache: {0}.", String(describing: displaced.lastPathComponent)) } catch {handleOperationError(error)} } } } message: { Text(l10n("Wymaga zamknięcia Safari. Bieżący folder również zostanie zachowany jako kopia.")) }
     }
 }
 @main struct SafariIconFixerApp: App {
     var body: some Scene {
         WindowGroup { MainView() }.defaultSize(width: 1040, height: 640).windowResizability(.contentMinSize)
             .commands {
+                CommandMenu(l10n("Język")) {
+                    ForEach(AppLanguage.choices, id: \.code) { choice in
+                        Button {
+                            AppLanguage.set(choice.code)
+                            let alert = NSAlert()
+                            alert.messageText = l10n("Wybrano język")
+                            alert.informativeText = l10n("Język zostanie zmieniony po ponownym uruchomieniu aplikacji.")
+                            alert.addButton(withTitle: l10n("OK"))
+                            alert.runModal()
+                        } label: {
+                            if AppLanguage.selection == choice.code {
+                                Label(choice.code == "system" ? l10n("Automatycznie (system)") : choice.name, systemImage: "checkmark")
+                            } else {
+                                Text(choice.code == "system" ? l10n("Automatycznie (system)") : choice.name)
+                            }
+                        }
+                    }
+                }
                 CommandGroup(replacing: .appInfo) {
-                    Button("O Safari Icon Fixer") { NotificationCenter.default.post(name: .sifAbout, object: nil) }
-                    Button("Sprawdź aktualizacje…") { NotificationCenter.default.post(name: .sifUpdate, object: nil) }
+                    Button(l10n("O Safari Icon Fixer")) { NotificationCenter.default.post(name: .sifAbout, object: nil) }
+                    Button(l10n("Sprawdź aktualizacje…")) { NotificationCenter.default.post(name: .sifUpdate, object: nil) }
                 }
             }
     }

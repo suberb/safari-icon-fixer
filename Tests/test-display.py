@@ -5,7 +5,7 @@ with tempfile.TemporaryDirectory() as temp:
     main = Path(temp)/'main.swift'
     main.write_text('print(iconDisplayAssignment(.fullTile)); print(iconDisplayAssignment(.systemTile)); print("preserve=" + iconDisplayAssignment(nil))')
     binary = Path(temp)/'test'
-    subprocess.run(['swiftc','IconPixels.swift',str(main),'-o',str(binary)],check=True)
+    subprocess.run(['swiftc','Localization.swift','IconPixels.swift',str(main),'-o',str(binary)],check=True)
     full, system, preserve = subprocess.check_output([str(binary)],text=True).splitlines()
     assert preserve == 'preserve='
     for flag in ['icon_is_in_cache','touch_icon_is_in_cache']:

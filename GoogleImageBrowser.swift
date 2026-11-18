@@ -126,14 +126,14 @@ import WebKit
             let failure = error as NSError
             // WebKit cancels provisional loads during regular redirects and result changes.
             if (failure.domain == NSURLErrorDomain && failure.code == NSURLErrorCancelled) || (failure.domain == "WebKitErrorDomain" && failure.code == 102) { return }
-            parent.onNotice("Google Grafika: \(error.localizedDescription). Możesz wkleić obraz lub otworzyć przeglądarkę.")
+            parent.onNotice(l10n("Google Grafika: {0}. Możesz wkleić obraz lub otworzyć przeglądarkę.", String(describing: error.localizedDescription)))
         }
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
             guard let url = navigationAction.request.url else { decisionHandler(.cancel); return }
             if navigationAction.targetFrame?.isMainFrame == false { decisionHandler(.allow); return }
             // Keep the top page on Google; arbitrary external sites cannot access the selection bridge.
             guard googlePageURL(url) || url.absoluteString == "about:blank" else {
-                decisionHandler(.cancel); parent.onNotice("Wybierz grafikę w wynikach Google lub użyj zewnętrznej przeglądarki."); return
+                decisionHandler(.cancel); parent.onNotice(l10n("Wybierz grafikę w wynikach Google lub użyj zewnętrznej przeglądarki.")); return
             }
             if navigationAction.targetFrame == nil { decisionHandler(.cancel); webView.load(navigationAction.request); return }
             decisionHandler(.allow)
@@ -157,18 +157,18 @@ private final class GoogleDownloadPolicy: NSObject, URLSessionTaskDelegate {
 }
 func selectedGoogleImage(_ value: String) async throws -> (Data, String) {
     if value.hasPrefix("data:image/"), let comma = value.firstIndex(of: ",") {
-        guard value[..<comma].lowercased().hasSuffix(";base64"), let data = Data(base64Encoded: String(value[value.index(after: comma)...])), data.count <= 8_000_000 else { throw fail("Nieobsługiwany lub zbyt duży obraz. Spróbuj wkleić grafikę.") }
-        return (data, "Google Grafika — obraz z wyników")
+        guard value[..<comma].lowercased().hasSuffix(";base64"), let data = Data(base64Encoded: String(value[value.index(after: comma)...])), data.count <= 8_000_000 else { throw fail(l10n("Nieobsługiwany lub zbyt duży obraz. Spróbuj wkleić grafikę.")) }
+        return (data, l10n("Google Grafika — obraz z wyników"))
     }
-    guard let url = URL(string: value), publicImageURL(url) else { throw fail("Nie można pobrać tego obrazu. Wybierz inny albo użyj Kopiuj/Wklej obraz.") }
+    guard let url = URL(string: value), publicImageURL(url) else { throw fail(l10n("Nie można pobrać tego obrazu. Wybierz inny albo użyj Kopiuj/Wklej obraz.")) }
     let cfg = URLSessionConfiguration.ephemeral
     cfg.httpAdditionalHeaders = ["Accept": "image/*,*/*;q=0.8", "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Safari/605.1.15"]
     cfg.httpShouldSetCookies = false; cfg.urlCredentialStorage = nil; cfg.timeoutIntervalForRequest = 12; cfg.timeoutIntervalForResource = 25
     let session = URLSession(configuration: cfg, delegate: GoogleDownloadPolicy(), delegateQueue: nil)
     defer { session.invalidateAndCancel() }
     let (bytes, response) = try await session.bytes(from: url)
-    guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode), let final = http.url, publicImageURL(final), http.expectedContentLength <= 8_000_000 else { throw fail("Serwer nie udostępnił obrazu. Spróbuj skopiować obraz z podglądu.") }
+    guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode), let final = http.url, publicImageURL(final), http.expectedContentLength <= 8_000_000 else { throw fail(l10n("Serwer nie udostępnił obrazu. Spróbuj skopiować obraz z podglądu.")) }
     var data = Data()
-    for try await byte in bytes { guard data.count < 8_000_000 else { throw fail("Obraz przekracza 8 MB.") }; data.append(byte) }
+    for try await byte in bytes { guard data.count < 8_000_000 else { throw fail(l10n("Obraz przekracza 8 MB.")) }; data.append(byte) }
     return (data, final.absoluteString)
 }

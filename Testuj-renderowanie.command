@@ -4,5 +4,5 @@ cd "$(dirname "$0")"
 if [[ "$(uname -s)" != Darwin ]]; then echo "Wymagany macOS."; exit 1; fi
 TEMP="$(mktemp -d)"
 trap 'rm -rf "$TEMP"' EXIT
-xcrun --sdk macosx swiftc -swift-version 5 IconPixels.swift IconArtwork.swift Tests/macOS/main.swift -o "$TEMP/test-render"
+xcrun --sdk macosx swiftc -swift-version 5 Localization.swift IconPixels.swift IconArtwork.swift Tests/macOS/main.swift -o "$TEMP/test-render"
 "$TEMP/test-render"

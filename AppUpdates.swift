@@ -9,8 +9,8 @@ extension Notification.Name {
 }
 
 enum AppReleaseInfo {
-    static var version: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.3.3" }
-    static var build: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "15" }
+    static var version: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.4.0" }
+    static var build: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "16" }
     static let repository = "suberb/safari-icon-fixer"
     static let repositoryURL = URL(string: "https://github.com/\(repository)")!
     static let releasesURL = repositoryURL.appendingPathComponent("releases")
@@ -34,7 +34,7 @@ enum AppReleaseInfo {
 @MainActor final class AppUpdates: ObservableObject {
     @Published private(set) var available: GitHubRelease?
     @Published private(set) var checking = false
-    @Published private(set) var status = "Nie sprawdzano aktualizacji."
+    @Published private(set) var status = l10n("Nie sprawdzano aktualizacji.")
     @Published var automatic: Bool = UserDefaults.standard.object(forKey: "sif.updates.auto") as? Bool ?? true {
         didSet { UserDefaults.standard.set(automatic, forKey: "sif.updates.auto") }
     }
@@ -47,7 +47,7 @@ enum AppReleaseInfo {
         guard !checking else { return }
         checking = true
         defer { checking = false }
-        status = "Sprawdzanie w GitHub Releases…"
+        status = l10n("Sprawdzanie w GitHub Releases…")
         UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: lastAttemptKey)
         do {
             var request = URLRequest(url: AppReleaseInfo.endpoint, timeoutInterval: 15)
@@ -59,20 +59,20 @@ enum AppReleaseInfo {
             let session = URLSession(configuration: config)
             defer { session.finishTasksAndInvalidate() }
             let (data, response) = try await session.data(for: request)
-            guard let http = response as? HTTPURLResponse else { status = "Nieprawidłowa odpowiedź GitHub."; return }
+            guard let http = response as? HTTPURLResponse else { status = l10n("Nieprawidłowa odpowiedź GitHub."); return }
             switch http.statusCode {
             case 200: break
-            case 404: status = "Brak publicznego wydania lub repozytorium jest prywatne. Otwórz wydania w GitHub po zalogowaniu."; return
-            case 403, 429: status = "GitHub ograniczył dostęp do API. Spróbuj później."; return
-            default: status = "GitHub zwrócił błąd HTTP \(http.statusCode)."; return
+            case 404: status = l10n("Brak publicznego wydania lub repozytorium jest prywatne. Otwórz wydania w GitHub po zalogowaniu."); return
+            case 403, 429: status = l10n("GitHub ograniczył dostęp do API. Spróbuj później."); return
+            default: status = l10n("GitHub zwrócił błąd HTTP {0}.", String(describing: http.statusCode)); return
             }
             guard let current = ReleaseVersion(AppReleaseInfo.version), let release = try? JSONDecoder().decode(GitHubRelease.self, from: data), let latest = release.version else {
-                status = "Nie można odczytać numeru stabilnego wydania."; return
+                status = l10n("Nie można odczytać numeru stabilnego wydania."); return
             }
             available = latest > current ? release : nil
-            status = latest > current ? "Dostępna wersja \(latest.string)." : "Masz aktualną wersję."
+            status = latest > current ? l10n("Dostępna wersja {0}.", String(describing: latest.string)) : l10n("Masz aktualną wersję.")
         } catch {
-            status = "Nie udało się połączyć z GitHub. Sprawdź internet i spróbuj ponownie."
+            status = l10n("Nie udało się połączyć z GitHub. Sprawdź internet i spróbuj ponownie.")
         }
     }
 }
@@ -85,17 +85,17 @@ enum AppReleaseInfo {
             Image(nsImage: NSApplication.shared.applicationIconImage).resizable().scaledToFit().frame(width: 100, height: 100)
             VStack(spacing: 5) {
                 Text("Safari Icon Fixer").font(.title.bold())
-                Text("Wersja \(AppReleaseInfo.version) (\(AppReleaseInfo.build))").font(.subheadline).foregroundStyle(.secondary)
+                Text(l10n("Wersja {0} ({1})", String(describing: AppReleaseInfo.version), String(describing: AppReleaseInfo.build))).font(.subheadline).foregroundStyle(.secondary)
                 Text("Ana × ChatGPT").font(.headline).foregroundStyle(Color.purple)
-                Text("Twoje Safari. Twoje ikony.").font(.subheadline).foregroundStyle(.secondary)
+                Text(l10n("Twoje Safari. Twoje ikony.")).font(.subheadline).foregroundStyle(.secondary)
             }
             Divider()
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
-                    Text("Aktualizacje").font(.headline)
+                    Text(l10n("Aktualizacje")).font(.headline)
                     Spacer()
                     if updates.checking { ProgressView().controlSize(.small) }
-                    Button("Sprawdź teraz") { Task { await updates.check() } }.disabled(updates.checking)
+                    Button(l10n("Sprawdź teraz")) { Task { await updates.check() } }.disabled(updates.checking)
                 }
                 Text(updates.status).font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 if let release = updates.available {
@@ -103,24 +103,24 @@ enum AppReleaseInfo {
                         ScrollView { Text(notes).font(.caption).frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled) }.frame(maxHeight: 105)
                     }
                     HStack {
-                        Link("Informacje o wydaniu", destination: AppReleaseInfo.releaseURL(release))
+                        Link(l10n("Informacje o wydaniu"), destination: AppReleaseInfo.releaseURL(release))
                         Spacer()
                         if let url = AppReleaseInfo.downloadURL(release) {
-                            Button(url.pathExtension == "dmg" ? "Pobierz DMG" : "Pobierz aktualizację") { NSWorkspace.shared.open(url) }.buttonStyle(.borderedProminent)
+                            Button(url.pathExtension == "dmg" ? l10n("Pobierz DMG") : l10n("Pobierz aktualizację")) { NSWorkspace.shared.open(url) }.buttonStyle(.borderedProminent)
                         } else {
-                            Link("Pobierz z GitHub", destination: AppReleaseInfo.releaseURL(release))
+                            Link(l10n("Pobierz z GitHub"), destination: AppReleaseInfo.releaseURL(release))
                         }
                     }
                 }
-                Toggle("Automatycznie sprawdzaj aktualizacje", isOn: $updates.automatic)
-                Text("Sprawdzanie raz dziennie podczas uruchomienia lub powrotu do aplikacji. GitHub otrzymuje tylko zwykłe zapytanie o wydanie, nie zakładki ani ikony. Instalujesz aktualizację samodzielnie.")
+                Toggle(l10n("Automatycznie sprawdzaj aktualizacje"), isOn: $updates.automatic)
+                Text(l10n("Sprawdzanie raz dziennie podczas uruchomienia lub powrotu do aplikacji. GitHub otrzymuje tylko zwykłe zapytanie o wydanie, nie zakładki ani ikony. Instalujesz aktualizację samodzielnie."))
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }.padding(14).background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
             HStack {
                 Link("GitHub", destination: AppReleaseInfo.repositoryURL)
-                Link("Historia wersji i pobieranie", destination: AppReleaseInfo.releasesURL)
+                Link(l10n("Historia wersji i pobieranie"), destination: AppReleaseInfo.releasesURL)
                 Spacer()
-                Button("Zamknij") { dismiss() }.keyboardShortcut(.defaultAction)
+                Button(l10n("Zamknij")) { dismiss() }.keyboardShortcut(.defaultAction)
             }.font(.subheadline)
         }.padding(26).frame(width: 470)
     }
