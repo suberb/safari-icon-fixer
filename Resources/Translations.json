@@ -333,7 +333,18 @@
     "Dopasowano {0} z {1} ikon w obecnym zakresie.": "{0} von {1} Symbolen im aktuellen Bereich zugeordnet.",
     "Istniejące szkice i niedopasowane domeny pominięto. Ikony trafią do szkicu, nie bezpośrednio do Safari.": "Vorhandene Entwürfe und nicht passende Domains werden übersprungen. Symbole landen im Entwurf, nicht direkt in Safari.",
     "Dobiera tło na podstawie kolorów i jasności logo.": "Wählt den Hintergrund anhand der Farben und Helligkeit des Logos.",
-    "Przerwano motyw. Zachowano przygotowane ikony.": "Design abgebrochen. Vorbereitete Symbole bleiben erhalten."
+    "Przerwano motyw. Zachowano przygotowane ikony.": "Design abgebrochen. Vorbereitete Symbole bleiben erhalten.",
+    "Tryb demonstracyjny": "Demomodus",
+    "Fikcyjne zakładki": "Beispiel-Lesezeichen",
+    "Nic nie jest zapisywane w Safari.": "In Safari wird nichts gespeichert.",
+    "Zacznij od nowa": "Neu beginnen",
+    "Po": "Nachher",
+    "Zastosowano tylko w demo.": "Nur in der Demo angewendet.",
+    "Fikcyjna zakładka": "Beispiel-Lesezeichen",
+    "Demo działa lokalnie, bez dostępu do Safari.": "Die Demo läuft lokal und ohne Safari-Zugriff.",
+    "Wypróbuj edytor bez dostępu do Safari lub rozpocznij pracę z własnymi Ulubionymi.": "Teste den Editor ohne Safari-Zugriff oder starte mit deinen eigenen Favoriten.",
+    "Wypróbuj demo": "Demo ausprobieren",
+    "Otwórz moje Ulubione": "Meine Favoriten öffnen"
   },
   "en": {
     "Odzyskaj własną ikonę": "Restore custom icon",
@@ -669,7 +680,18 @@
     "Dopasowano {0} z {1} ikon w obecnym zakresie.": "Matched {0} of {1} icons in the current scope.",
     "Istniejące szkice i niedopasowane domeny pominięto. Ikony trafią do szkicu, nie bezpośrednio do Safari.": "Existing drafts and unmatched domains are skipped. Icons go into your draft, not directly into Safari.",
     "Dobiera tło na podstawie kolorów i jasności logo.": "Suggests a background based on the logo’s colors and brightness.",
-    "Przerwano motyw. Zachowano przygotowane ikony.": "Theme cancelled. Prepared icons were kept."
+    "Przerwano motyw. Zachowano przygotowane ikony.": "Theme cancelled. Prepared icons were kept.",
+    "Tryb demonstracyjny": "Demo mode",
+    "Fikcyjne zakładki": "Sample bookmarks",
+    "Nic nie jest zapisywane w Safari.": "Nothing is saved to Safari.",
+    "Zacznij od nowa": "Start over",
+    "Po": "After",
+    "Zastosowano tylko w demo.": "Applied in demo only.",
+    "Fikcyjna zakładka": "Sample bookmark",
+    "Demo działa lokalnie, bez dostępu do Safari.": "Demo runs locally, without Safari access.",
+    "Wypróbuj edytor bez dostępu do Safari lub rozpocznij pracę z własnymi Ulubionymi.": "Try the editor without Safari access, or get started with your own Favorites.",
+    "Wypróbuj demo": "Try demo",
+    "Otwórz moje Ulubione": "Open my Favorites"
   },
   "es": {
     "Odzyskaj własną ikonę": "Recuperar icono personalizado",
@@ -1005,7 +1027,18 @@
     "Dopasowano {0} z {1} ikon w obecnym zakresie.": "Coinciden {0} de {1} iconos en el ámbito actual.",
     "Istniejące szkice i niedopasowane domeny pominięto. Ikony trafią do szkicu, nie bezpośrednio do Safari.": "Se omiten los borradores existentes y los dominios sin coincidencias. Los iconos se preparan en el borrador, no directamente en Safari.",
     "Dobiera tło na podstawie kolorów i jasności logo.": "Sugiere un fondo según los colores y el brillo del logotipo.",
-    "Przerwano motyw. Zachowano przygotowane ikony.": "Tema cancelado. Se conservaron los iconos preparados."
+    "Przerwano motyw. Zachowano przygotowane ikony.": "Tema cancelado. Se conservaron los iconos preparados.",
+    "Tryb demonstracyjny": "Modo de demostración",
+    "Fikcyjne zakładki": "Marcadores de ejemplo",
+    "Nic nie jest zapisywane w Safari.": "No se guarda nada en Safari.",
+    "Zacznij od nowa": "Empezar de nuevo",
+    "Po": "Después",
+    "Zastosowano tylko w demo.": "Aplicado solo en la demostración.",
+    "Fikcyjna zakładka": "Marcador de ejemplo",
+    "Demo działa lokalnie, bez dostępu do Safari.": "La demostración funciona localmente, sin acceso a Safari.",
+    "Wypróbuj edytor bez dostępu do Safari lub rozpocznij pracę z własnymi Ulubionymi.": "Prueba el editor sin acceso a Safari o empieza con tus propios favoritos.",
+    "Wypróbuj demo": "Probar demostración",
+    "Otwórz moje Ulubione": "Abrir mis favoritos"
   },
   "fr": {
     "Odzyskaj własną ikonę": "Restaurer l’icône personnalisée",
@@ -1341,7 +1374,18 @@
     "Dopasowano {0} z {1} ikon w obecnym zakresie.": "{0} icônes sur {1} correspondent à la sélection actuelle.",
     "Istniejące szkice i niedopasowane domeny pominięto. Ikony trafią do szkicu, nie bezpośrednio do Safari.": "Les brouillons existants et les domaines sans correspondance sont ignorés. Les icônes sont préparées dans le brouillon, pas directement dans Safari.",
     "Dobiera tło na podstawie kolorów i jasności logo.": "Suggère un fond selon les couleurs et la luminosité du logo.",
-    "Przerwano motyw. Zachowano przygotowane ikony.": "Thème annulé. Les icônes préparées sont conservées."
+    "Przerwano motyw. Zachowano przygotowane ikony.": "Thème annulé. Les icônes préparées sont conservées.",
+    "Tryb demonstracyjny": "Mode démo",
+    "Fikcyjne zakładki": "Favoris fictifs",
+    "Nic nie jest zapisywane w Safari.": "Rien n’est enregistré dans Safari.",
+    "Zacznij od nowa": "Recommencer",
+    "Po": "Après",
+    "Zastosowano tylko w demo.": "Appliqué uniquement dans la démo.",
+    "Fikcyjna zakładka": "Favori fictif",
+    "Demo działa lokalnie, bez dostępu do Safari.": "La démo fonctionne localement, sans accès à Safari.",
+    "Wypróbuj edytor bez dostępu do Safari lub rozpocznij pracę z własnymi Ulubionymi.": "Essaie l’éditeur sans accès à Safari ou commence avec tes propres favoris.",
+    "Wypróbuj demo": "Essayer la démo",
+    "Otwórz moje Ulubione": "Ouvrir mes favoris"
   },
   "pl": {
     "Odzyskaj własną ikonę": "Odzyskaj własną ikonę",
@@ -1677,7 +1721,18 @@
     "Dopasowano {0} z {1} ikon w obecnym zakresie.": "Dopasowano {0} z {1} ikon w obecnym zakresie.",
     "Istniejące szkice i niedopasowane domeny pominięto. Ikony trafią do szkicu, nie bezpośrednio do Safari.": "Istniejące szkice i niedopasowane domeny pominięto. Ikony trafią do szkicu, nie bezpośrednio do Safari.",
     "Dobiera tło na podstawie kolorów i jasności logo.": "Dobiera tło na podstawie kolorów i jasności logo.",
-    "Przerwano motyw. Zachowano przygotowane ikony.": "Przerwano motyw. Zachowano przygotowane ikony."
+    "Przerwano motyw. Zachowano przygotowane ikony.": "Przerwano motyw. Zachowano przygotowane ikony.",
+    "Tryb demonstracyjny": "Tryb demonstracyjny",
+    "Fikcyjne zakładki": "Fikcyjne zakładki",
+    "Nic nie jest zapisywane w Safari.": "Nic nie jest zapisywane w Safari.",
+    "Zacznij od nowa": "Zacznij od nowa",
+    "Po": "Po",
+    "Zastosowano tylko w demo.": "Zastosowano tylko w demo.",
+    "Fikcyjna zakładka": "Fikcyjna zakładka",
+    "Demo działa lokalnie, bez dostępu do Safari.": "Demo działa lokalnie, bez dostępu do Safari.",
+    "Wypróbuj edytor bez dostępu do Safari lub rozpocznij pracę z własnymi Ulubionymi.": "Wypróbuj edytor bez dostępu do Safari lub rozpocznij pracę z własnymi Ulubionymi.",
+    "Wypróbuj demo": "Wypróbuj demo",
+    "Otwórz moje Ulubione": "Otwórz moje Ulubione"
   },
   "uk": {
     "Odzyskaj własną ikonę": "Відновити власну іконку",
@@ -2013,6 +2068,17 @@
     "Dopasowano {0} z {1} ikon w obecnym zakresie.": "Зіставлено {0} з {1} іконок у поточній області.",
     "Istniejące szkice i niedopasowane domeny pominięto. Ikony trafią do szkicu, nie bezpośrednio do Safari.": "Наявні чернетки й домени без збігів пропускаються. Іконки потраплять до чернетки, а не безпосередньо в Safari.",
     "Dobiera tło na podstawie kolorów i jasności logo.": "Підбирає тло за кольорами та яскравістю логотипа.",
-    "Przerwano motyw. Zachowano przygotowane ikony.": "Застосування теми скасовано. Підготовлені іконки збережено."
+    "Przerwano motyw. Zachowano przygotowane ikony.": "Застосування теми скасовано. Підготовлені іконки збережено.",
+    "Tryb demonstracyjny": "Демонстраційний режим",
+    "Fikcyjne zakładki": "Демонстраційні закладки",
+    "Nic nie jest zapisywane w Safari.": "У Safari нічого не зберігається.",
+    "Zacznij od nowa": "Почати спочатку",
+    "Po": "Після",
+    "Zastosowano tylko w demo.": "Застосовано лише в демо.",
+    "Fikcyjna zakładka": "Демонстраційна закладка",
+    "Demo działa lokalnie, bez dostępu do Safari.": "Демо працює локально, без доступу до Safari.",
+    "Wypróbuj edytor bez dostępu do Safari lub rozpocznij pracę z własnymi Ulubionymi.": "Спробуй редактор без доступу до Safari або почни роботу зі своїми улюбленими закладками.",
+    "Wypróbuj demo": "Спробувати демо",
+    "Otwórz moje Ulubione": "Відкрити мої улюблені закладки"
   }
 }

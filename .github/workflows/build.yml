@@ -32,6 +32,9 @@ jobs:
           /tmp/sif-backups-tests
           swiftc Localization.swift IconPixels.swift IconCollection.swift Tests/Collections/main.swift -o /tmp/sif-collection-tests
           /tmp/sif-collection-tests
+          swiftc Localization.swift IconPixels.swift DemoModel.swift Tests/Demo/main.swift -o /tmp/sif-demo-tests
+          /tmp/sif-demo-tests
+          python3 Tests/test-demo-isolation.py
           python3 Tests/test-reset.py
           python3 Tests/test-display.py
           node Tests/test-selection.js

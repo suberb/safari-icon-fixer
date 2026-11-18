@@ -22,10 +22,17 @@
   try { saved = localStorage.getItem('sif-site-theme'); } catch (_) {}
   const applyTheme = value => { root.dataset.theme = value; theme.setAttribute('aria-label', value === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'); };
   applyTheme(saved === 'light' || saved === 'dark' ? saved : media.matches ? 'dark' : 'light');
-  theme.addEventListener('click', () => { const next = root.dataset.theme === 'dark' ? 'light' : 'dark'; applyTheme(next); try { localStorage.setItem('sif-site-theme',next); } catch (_) {} });
+  theme.addEventListener('click', () => { const next = root.dataset.theme === 'dark' ? 'light' : 'dark'; applyTheme(next); saved = next; try { localStorage.setItem('sif-site-theme',next); } catch (_) {} });
   const demo = document.getElementById('demo'), before = document.querySelector('[data-before]'), after = document.querySelector('[data-after]');
   const setRestored = restored => { demo.dataset.restored = String(restored); before.setAttribute('aria-pressed', String(!restored)); after.setAttribute('aria-pressed', String(restored)); document.getElementById('demo-status').textContent = restored ? '✦ Restored' : 'Generic letters'; };
   before.addEventListener('click',()=>setRestored(false)); after.addEventListener('click',()=>setRestored(true));
+  const palettes = [...document.querySelectorAll('[data-palette][type="button"]')];
+  for (const palette of palettes) palette.addEventListener('click', () => {
+    demo.dataset.palette = palette.dataset.palette;
+    palettes.forEach(other => other.setAttribute('aria-pressed', String(other === palette)));
+    setRestored(true);
+  });
+  media.addEventListener?.('change', event => { if (!saved) applyTheme(event.matches ? 'dark' : 'light'); });
   const studio = document.getElementById('studio-icon');
   const swatches = [...document.querySelectorAll('.swatch')];
   for (const btn of swatches) btn.addEventListener('click',()=> { studio.style.setProperty('--studio-color',btn.dataset.color); studio.style.setProperty('--studio-ink',btn.dataset.ink); swatches.forEach(other=>other.setAttribute('aria-pressed',String(btn===other))); });

@@ -37,6 +37,10 @@ English · Deutsch · Français · Українська · Polski · Español
 
 Automatically follows your preferred supported system language, or choose your own in the app's Language menu (applies after reopening).
 
+## Try before granting access
+
+Choose **Try demo** on the welcome screen (v0.7.0+) or in the sidebar. Explore eight fictional Favorites, Quick Repair, Color Studio and simulated Apply; changes are temporary and the standalone demo does not read or write Safari.
+
 ## Get started
 
 1. Download the latest **DMG** and drag Safari Icon Fixer into Applications.

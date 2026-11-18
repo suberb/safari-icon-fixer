@@ -1,5 +1,10 @@
 # Historia wersji
 
+## 0.7.0 — Perfection Edition
+- Isolated in-memory demo with fictional Favorites, real Color Studio, simulated repair, before/after and Apply. First-launch choice and sidebar entry, plus `--demo` for presentation.
+- Refined website with interactive theme playground, demo guidance and protection/collection information.
+- Added demo state tests to CI.
+
 ## 0.6.6 — Color Studio+
 - Smart Color chooses a brand tint or a neutral light/dark background based on visible foreground contrast; Soft Brand retains the previous 30–50% lightening.
 - Pastel, Sandstone and Smart Color join the existing four presets. Apply to selected or visible icons in the current scope, as local drafts only.

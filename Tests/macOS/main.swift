@@ -35,3 +35,12 @@ print("OK: solid backgrounds exported as opaque PNG")
 let smart = composeArtwork(art,background:.smart,color:.white,inset:0.25,lightening:0.4)!
 precondition(!hasTransparentPixels(smart) && decode(smart).width == 256)
 print("OK: Smart Color rendered as full opaque Safari tile")
+
+for id in 0..<8 {
+    let sample = demoArtwork(id)
+    precondition(!sample.isEmpty && hasTransparentPixels(sample))
+    guard let art = IconArtwork(sample), art.separate else { fatalError("Invalid demo fixture \(id)") }
+    precondition(composeArtwork(art, background: .smart, color: .white, inset: 0.12, lightening: 0.4) != nil)
+    precondition(sample != demoArtwork(id, variant: 1))
+}
+print("OK: all synthetic demo PNGs and real Color Studio renderer")

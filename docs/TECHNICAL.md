@@ -33,3 +33,9 @@ Brak telemetrii. Żądania wysyłane są podczas wyszukiwania/pobierania ikon i 
 Inteligentne tło porównuje jasność nieprzezroczystych pikseli wydzielonego znaku z jasnymi i ciemnymi tłami; to heurystyka, nie gwarancja kontrastu dla każdego fragmentu. Soft Brand pozostawia osobny mechanizm rozjaśniania o 30–50%. Motyw można przygotować dla zaznaczonych lub widocznych ikon (złożone tła są pomijane); zmiany trafiają do szkicu.
 
 Kolekcja JSON w wersji formatu 1 zawiera tylko domenę, PNG (normalizowane przy eksporcie i imporcie) oraz opcjonalny styl Safari. Eksport obejmuje zapisane chronione ikony w zaznaczeniu albo bieżącym zakresie, nie historię, tytuły ani foldery zakładek. Domeny mogą ujawniać zainteresowania: udostępniaj plik tylko świadomie. Limit 500 ikon i 64 MB pliku; obrazy wejściowe muszą mieć prawidłowy nagłówek PNG, maks. 1024 × 1024 i 8 MB na ikonę. Import nie dodaje zakładek, nie pobiera ikon z sieci, pomija niedopasowane domeny i istniejące szkice. Przed zapisem wymagany jest zwykły krok Zastosuj przy zamkniętym Safari.
+
+## Demo Mode (0.7.0)
+
+`WorkspaceRoot` selects an isolated `DemoWorkspace` before constructing `MainView` when launched with `--demo` or before the user chooses to open real Favorites. `DemoSession` holds sample state only in memory, while the shared `InlineIconStudio` supplies the real image renderer. No Safari access, cache operations, file imports, web searches or actual writes are available in this workspace. In an already opened live session, the demo sheet does not operate on the live library. Closing it discards demo edits.
+
+For native promotional captures see [CAPTURE.md](CAPTURE.md). Website illustrations are not native screenshots.

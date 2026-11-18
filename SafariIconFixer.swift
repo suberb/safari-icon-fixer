@@ -416,6 +416,7 @@ func fetchIcon(_ host: String) async -> Pending? {
     @State private var marked = Set<String>()
     @StateObject private var updates = AppUpdates.shared
     @State private var showAbout = false
+    @State private var showDemo = false
     @AppStorage("sif.workspace.grid") private var gridMode = true
     @AppStorage("sif.workspace.sidebar") private var showSidebar = true
     @AppStorage("sif.workspace.inspector") private var showInspector = true
@@ -678,7 +679,8 @@ func fetchIcon(_ host: String) async -> Pending? {
         }
     }
     private var libraryCommandsAvailable: Bool {
-        !busy && !permissionDenied && !previewMode && !showAbout && !showPermission && !showBackups && collectionReview == nil && iconEditor == nil && historySite == nil && quickLook == nil && nativePreviewURL == nil && !confirm && !confirmDiscard && !confirmReset && !confirmRestore
+        guard !showDemo else { return false }
+        return !busy && !permissionDenied && !previewMode && !showAbout && !showPermission && !showBackups && collectionReview == nil && iconEditor == nil && historySite == nil && quickLook == nil && nativePreviewURL == nil && !confirm && !confirmDiscard && !confirmReset && !confirmRestore
     }
     private func openNativePreview(_ item: Site) {
         guard nativePreviewURL == nil else { return }
@@ -982,6 +984,7 @@ func fetchIcon(_ host: String) async -> Pending? {
             Button {
                 if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Safari") { NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration(), completionHandler: nil) }
             } label: { Label(l10n("Otwórz Safari"), systemImage: "safari") }.buttonStyle(.plain)
+            Button { showDemo = true } label: { Label(l10n("Wypróbuj demo"), systemImage: "play.rectangle") }.buttonStyle(.plain).disabled(busy)
             Button { showAbout = true } label: { Label(l10n("O aplikacji"), systemImage: "info.circle") }.buttonStyle(.plain)
 
         }.padding(12).frame(minWidth: 170, idealWidth: 205, maxWidth: 270, maxHeight: .infinity, alignment: .topLeading)
@@ -1360,7 +1363,8 @@ func fetchIcon(_ host: String) async -> Pending? {
         .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in refreshSafariStatus() }
         .task { updates.checkAtLaunch() }
         .sheet(isPresented: $showAbout) { AppAboutView(updates: updates) }
-        .onReceive(NotificationCenter.default.publisher(for: .sifAbout)) { _ in showAbout = true }
+        .sheet(isPresented: $showDemo) { DemoWorkspace { showDemo = false } }
+        .onReceive(NotificationCenter.default.publisher(for: .sifAbout)) { _ in if !showDemo { showAbout = true } }
         .onReceive(NotificationCenter.default.publisher(for: .sifUpdate)) { _ in
             updates.check()
         }
@@ -1382,12 +1386,12 @@ func fetchIcon(_ host: String) async -> Pending? {
         .onChange(of: selected) { _ in studioEditingHost = nil }
         .onChange(of: pending) { _ in scheduleDraftSave() }
         .onChange(of: busy) { value in DraftProtection.shared.busy = value; if !value { persistPreparedDraft() } }
-        .onReceive(NotificationCenter.default.publisher(for: .sifUndoDraft)) { _ in undoDraft() }
-        .onReceive(NotificationCenter.default.publisher(for: .sifSelectAll)) { _ in if !busy && !permissionDenied { selectAllVisible() } }
+        .onReceive(NotificationCenter.default.publisher(for: .sifUndoDraft)) { _ in if !showDemo { undoDraft() } }
+        .onReceive(NotificationCenter.default.publisher(for: .sifSelectAll)) { _ in if !showDemo && !busy && !permissionDenied { selectAllVisible() } }
         .onReceive(NotificationCenter.default.publisher(for: .sifQuickLook)) { _ in if libraryCommandsAvailable, let item = site { openNativePreview(item) } }
         .onReceive(NotificationCenter.default.publisher(for: .sifCompare)) { _ in if libraryCommandsAvailable, let item = site { quickLook = item } }
         .onReceive(NotificationCenter.default.publisher(for: .sifSearch)) { _ in if libraryCommandsAvailable { searchFocused = true } }
-        .onReceive(NotificationCenter.default.publisher(for: .sifRescan)) { _ in if !busy && iconEditor == nil && !showBackups && !showPermission && collectionReview == nil { scan() } }
+        .onReceive(NotificationCenter.default.publisher(for: .sifRescan)) { _ in if !showDemo && !busy && iconEditor == nil && !showBackups && !showPermission && collectionReview == nil { scan() } }
         .sheet(isPresented: $showBackups, onDismiss: {
             if chosenBackup != nil, requireClosedSafari() { confirmRestore = true }
             else { chosenBackup = nil }
@@ -1503,6 +1507,7 @@ private enum StudioPreset: CaseIterable {
     let initialDisplay: SafariIconDisplay?
     let staged: Bool
     let changeImage: () -> Void
+    var demo = false
     let onStage: (Data, SafariIconDisplay) -> Bool
     private struct Input: Equatable { let data: Data; let style: SafariIconDisplay?; let staged: Bool }
     private var input: Input { Input(data: data, style: initialDisplay, staged: staged) }
@@ -1620,7 +1625,7 @@ private enum StudioPreset: CaseIterable {
                     .font(.caption.weight(.medium)).foregroundStyle(Color.accentColor)
                     .padding(.vertical, 5)
             }
-            Text(l10n("Edycja trafia do szkicu. Zastosuj zapisze zmiany w Safari."))
+            Text(demo ? l10n("Nic nie jest zapisywane w Safari.") : l10n("Edycja trafia do szkicu. Zastosuj zapisze zmiany w Safari."))
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }.onAppear { resetInput() }
         .onChange(of: input) { value in
@@ -1629,6 +1634,136 @@ private enum StudioPreset: CaseIterable {
         }
     }
 }
+// This workspace deliberately uses the same rendering editor, but never the live Cache or MainView.
+@MainActor private struct DemoWorkspace: View {
+    let close: () -> Void
+    @State private var session = DemoSession()
+    @State private var selection = 1
+    @State private var compareBefore = false
+    @State private var revision = 0
+    @State private var showApplied = false
+    @State private var variants: [Int: Int] = [:]
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private let samples = DemoSample.all
+    private let originals = DemoSample.all.map { demoArtwork($0.id) }
+    private let purple = Color(red: 137/255, green: 96/255, blue: 232/255)
+    private var sample: DemoSample { samples[selection] }
+    private func base(_ item: DemoSample) -> Data { originals[item.id] }
+    private func repair() {
+        for item in samples where session.missing(item) { session.edit(item.id, DemoEdit(png: base(item), style: .systemTile)) }
+        compareBefore = false; showApplied = false
+    }
+    private func tile(_ item: DemoSample) -> some View {
+        let edited = compareBefore ? nil : session.current(item.id)
+        let missing = compareBefore ? item.initiallyMissing : session.missing(item)
+        return VStack(spacing: 7) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 15, style: .continuous).fill(Color.secondary.opacity(0.14))
+                if missing { Text(String(item.name.prefix(1))).font(.system(size: 29, weight: .medium)).foregroundStyle(.secondary) }
+                else if let image = NSImage(data: edited?.png ?? base(item)) {
+                    Image(nsImage: image).resizable().scaledToFit().frame(width: edited?.style == .fullTile ? 64 : 54, height: edited?.style == .fullTile ? 64 : 54)
+                }
+            }.frame(width: 64, height: 64).clipShape(RoundedRectangle(cornerRadius: 15))
+            Text(item.name).font(.caption).lineLimit(1)
+        }.frame(maxWidth: .infinity).padding(.vertical, 10)
+            .background(selection == item.id ? purple.opacity(0.13) : Color.clear, in: RoundedRectangle(cornerRadius: 11))
+            .overlay(RoundedRectangle(cornerRadius: 11).strokeBorder(selection == item.id ? purple : Color.clear, lineWidth: 1.5))
+            .contentShape(Rectangle())
+    }
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                Image(nsImage: NSApplication.shared.applicationIconImage).resizable().scaledToFit().frame(width: 42, height: 42)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Safari Icon Fixer").font(.headline)
+                    Text(l10n("Tryb demonstracyjny")).font(.caption.weight(.medium)).foregroundStyle(purple)
+                }
+                Spacer()
+                Button(l10n("Zamknij"), action: close).keyboardShortcut(.cancelAction)
+            }.padding(16)
+            Divider()
+            HStack(spacing: 0) {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text(l10n("Ulubione")).font(.title2.bold())
+                    Label(l10n("Fikcyjne zakładki"), systemImage: "shield.checkered").font(.caption).foregroundStyle(.secondary)
+                    Divider()
+                    Text(l10n("Nic nie jest zapisywane w Safari.")).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    Spacer()
+                    Button { session.reset(); variants.removeAll(); revision += 1; compareBefore = false; showApplied = false } label: { Label(l10n("Zacznij od nowa"), systemImage: "arrow.counterclockwise") }.buttonStyle(.plain)
+                }.padding(16).frame(width: 166, alignment: .leading).frame(maxHeight: .infinity, alignment: .topLeading).background(.regularMaterial)
+                Divider()
+                VStack(alignment: .leading, spacing: 18) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(l10n("Ulubione")).font(.system(size: 28, weight: .semibold))
+                            Text(l10n("{0} stron · {1} do sprawdzenia", String(samples.count), String(samples.filter { session.missing($0) }.count))).font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Button(action: repair) { Label(l10n("Szybka naprawa"), systemImage: "wand.and.stars") }.buttonStyle(.borderedProminent).disabled(!samples.contains { session.missing($0) })
+                    }
+                    Picker(l10n("Podgląd"), selection: $compareBefore) {
+                        Text(l10n("Przed")).tag(true); Text(l10n("Po")).tag(false)
+                    }.labelsHidden().pickerStyle(.segmented)
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 90), spacing: 10)], spacing: 10) {
+                        ForEach(samples) { item in
+                            Button { selection = item.id; compareBefore = false } label: { tile(item) }.buttonStyle(.plain)
+                                .accessibilityLabel(item.name).accessibilityAddTraits(selection == item.id ? .isSelected : [])
+                        }
+                    }.animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: compareBefore)
+                    Spacer(minLength: 0)
+                    if showApplied { Label(l10n("Zastosowano tylko w demo."), systemImage: "checkmark.circle.fill").foregroundStyle(.secondary).font(.caption) }
+                    HStack {
+                        Button(l10n("Odrzuć zmianę")) { session.discard(); revision += 1; showApplied = false }.disabled(session.staged.isEmpty)
+                        Spacer()
+                        Button(l10n("Zastosuj ({0})", String(session.staged.count))) { session.apply(); compareBefore = false; showApplied = true }.buttonStyle(.borderedProminent).disabled(session.staged.isEmpty)
+                    }
+                }.padding(22).frame(minWidth: 350, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                Divider()
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 14) {
+                        Text(sample.name).font(.headline)
+                        Text(l10n("Fikcyjna zakładka")).font(.caption).foregroundStyle(.secondary)
+                        InlineIconStudio(data: session.current(selection)?.png ?? base(sample), initialDisplay: session.current(selection)?.style, staged: session.staged[selection] != nil, changeImage: {
+                            let next = variants[selection, default: 0] + 1
+                            variants[selection] = next
+                            session.edit(selection, DemoEdit(png: demoArtwork(selection, variant: next), style: .systemTile)); revision += 1; compareBefore = false; showApplied = false
+                        }, demo: true) { png, display in
+                            session.edit(selection, DemoEdit(png: png, style: display)); compareBefore = false; showApplied = false; return true
+                        }.id("\(selection)-\(revision)")
+                    }.padding(16)
+                }.frame(width: 285).background(.regularMaterial)
+            }
+            Divider()
+            HStack { Image(systemName: "lock.shield"); Text(l10n("Demo działa lokalnie, bez dostępu do Safari.")); Spacer() }.font(.caption).foregroundStyle(.secondary).padding(12)
+        }.frame(minWidth: 850, idealWidth: 1050, minHeight: 550, idealHeight: 660).tint(purple)
+    }
+}
+
+@MainActor private struct WorkspaceRoot: View {
+    @AppStorage("sif.onboarding.completed") private var completed = false
+    @State private var showingDemo = false
+    private let demoOnly = CommandLine.arguments.contains("--demo")
+    var body: some View {
+        if demoOnly { DemoWorkspace { NSApplication.shared.terminate(nil) } }
+        else if completed { MainView() }
+        else {
+            VStack(spacing: 20) {
+                Image(nsImage: NSApplication.shared.applicationIconImage).resizable().scaledToFit().frame(width: 112, height: 112)
+                Text("Safari Icon Fixer").font(.system(size: 36, weight: .bold))
+                Text(l10n("Twoje Safari. Twoje ikony.")).font(.title3).foregroundStyle(.secondary)
+                Text(l10n("Wypróbuj edytor bez dostępu do Safari lub rozpocznij pracę z własnymi Ulubionymi.")).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 430)
+                HStack(spacing: 12) {
+                    Button(l10n("Wypróbuj demo")) { showingDemo = true }.controlSize(.large)
+                    Button(l10n("Otwórz moje Ulubione")) { completed = true }.buttonStyle(.borderedProminent).controlSize(.large)
+                }
+                Label(l10n("Demo działa lokalnie, bez dostępu do Safari."), systemImage: "lock.shield").font(.caption).foregroundStyle(.secondary)
+            }.padding(42).frame(minWidth: 630, maxWidth: .infinity, minHeight: 480, maxHeight: .infinity)
+                .tint(Color(red: 137/255,green: 96/255,blue: 232/255))
+                .sheet(isPresented: $showingDemo) { DemoWorkspace { showingDemo = false } }
+        }
+    }
+}
+
 @MainActor final class DraftProtection: NSObject, NSApplicationDelegate {
     static let shared = DraftProtection()
     var pending = 0
@@ -1658,7 +1793,7 @@ extension Notification.Name {
     @NSApplicationDelegateAdaptor(DraftProtection.self) private var appDelegate
     @StateObject private var updates = AppUpdates.shared
     var body: some Scene {
-        Window("Safari Icon Fixer", id: "main") { MainView() }.defaultSize(width: 1120, height: 680).windowResizability(.contentMinSize)
+        Window("Safari Icon Fixer", id: "main") { WorkspaceRoot() }.defaultSize(width: 1120, height: 680).windowResizability(.contentMinSize)
             .commands {
                 CommandMenu(l10n("Ikony")) {
                     Button(l10n("Cofnij przygotowaną zmianę")) { NotificationCenter.default.post(name: .sifUndoDraft, object: nil) }.keyboardShortcut("z", modifiers: [.command, .option])
