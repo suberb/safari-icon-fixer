@@ -293,7 +293,12 @@
     "⌘ lub ⇧, aby zaznaczyć więcej ikon": "⌘ oder ⇧ für Mehrfachauswahl",
     "Safari jest otwarte": "Safari ist geöffnet",
     "Safari jest zamknięte": "Safari ist geschlossen",
-    "Przejdź do Safari i naciśnij ⌘Q, aby zastosować zmiany.": "Wechsle zu Safari und drücke ⌘Q, um Änderungen anzuwenden."
+    "Przejdź do Safari i naciśnij ⌘Q, aby zastosować zmiany.": "Wechsle zu Safari und drücke ⌘Q, um Änderungen anzuwenden.",
+    "Nie udało się przygotować podglądu.": "Vorschau konnte nicht erstellt werden.",
+    "Więcej działań": "Weitere Aktionen",
+    "Wygląd": "Darstellung",
+    "Zastosuj zapisze zmiany w Safari.": "Anwenden speichert Änderungen in Safari.",
+    "Zmień grafikę": "Bild ändern"
   },
   "en": {
     " Nie odtworzono: ": " Not restored: ",
@@ -589,7 +594,12 @@
     "⌘ lub ⇧, aby zaznaczyć więcej ikon": "⌘ or ⇧ to select more icons",
     "Safari jest otwarte": "Safari is open",
     "Safari jest zamknięte": "Safari is closed",
-    "Przejdź do Safari i naciśnij ⌘Q, aby zastosować zmiany.": "Switch to Safari and press ⌘Q to apply changes."
+    "Przejdź do Safari i naciśnij ⌘Q, aby zastosować zmiany.": "Switch to Safari and press ⌘Q to apply changes.",
+    "Nie udało się przygotować podglądu.": "Could not create the preview.",
+    "Więcej działań": "More actions",
+    "Wygląd": "Appearance",
+    "Zastosuj zapisze zmiany w Safari.": "Apply saves changes in Safari.",
+    "Zmień grafikę": "Change image"
   },
   "es": {
     " Nie odtworzono: ": " Sin restaurar: ",
@@ -885,7 +895,12 @@
     "⌘ lub ⇧, aby zaznaczyć więcej ikon": "⌘ o ⇧ para seleccionar varios iconos",
     "Safari jest otwarte": "Safari está abierto",
     "Safari jest zamknięte": "Safari está cerrado",
-    "Przejdź do Safari i naciśnij ⌘Q, aby zastosować zmiany.": "Cambia a Safari y pulsa ⌘Q para aplicar los cambios."
+    "Przejdź do Safari i naciśnij ⌘Q, aby zastosować zmiany.": "Cambia a Safari y pulsa ⌘Q para aplicar los cambios.",
+    "Nie udało się przygotować podglądu.": "No se pudo crear la vista previa.",
+    "Więcej działań": "Más acciones",
+    "Wygląd": "Apariencia",
+    "Zastosuj zapisze zmiany w Safari.": "Aplicar guarda los cambios en Safari.",
+    "Zmień grafikę": "Cambiar imagen"
   },
   "fr": {
     " Nie odtworzono: ": " Non restauré : ",
@@ -1181,7 +1196,12 @@
     "⌘ lub ⇧, aby zaznaczyć więcej ikon": "⌘ ou ⇧ pour sélectionner plusieurs icônes",
     "Safari jest otwarte": "Safari est ouvert",
     "Safari jest zamknięte": "Safari est fermé",
-    "Przejdź do Safari i naciśnij ⌘Q, aby zastosować zmiany.": "Passez à Safari et appuyez sur ⌘Q pour appliquer les modifications."
+    "Przejdź do Safari i naciśnij ⌘Q, aby zastosować zmiany.": "Passez à Safari et appuyez sur ⌘Q pour appliquer les modifications.",
+    "Nie udało się przygotować podglądu.": "Impossible de créer l’aperçu.",
+    "Więcej działań": "Plus d’actions",
+    "Wygląd": "Apparence",
+    "Zastosuj zapisze zmiany w Safari.": "Appliquer enregistre les modifications dans Safari.",
+    "Zmień grafikę": "Changer l’image"
   },
   "pl": {
     " Nie odtworzono: ": " Nie odtworzono: ",
@@ -1477,7 +1497,12 @@
     "⌘ lub ⇧, aby zaznaczyć więcej ikon": "⌘ lub ⇧, aby zaznaczyć więcej ikon",
     "Safari jest otwarte": "Safari jest otwarte",
     "Safari jest zamknięte": "Safari jest zamknięte",
-    "Przejdź do Safari i naciśnij ⌘Q, aby zastosować zmiany.": "Przejdź do Safari i naciśnij ⌘Q, aby zastosować zmiany."
+    "Przejdź do Safari i naciśnij ⌘Q, aby zastosować zmiany.": "Przejdź do Safari i naciśnij ⌘Q, aby zastosować zmiany.",
+    "Nie udało się przygotować podglądu.": "Nie udało się przygotować podglądu.",
+    "Więcej działań": "Więcej działań",
+    "Wygląd": "Wygląd",
+    "Zastosuj zapisze zmiany w Safari.": "Zastosuj zapisze zmiany w Safari.",
+    "Zmień grafikę": "Zmień grafikę"
   },
   "uk": {
     " Nie odtworzono: ": " Не відновлено: ",
@@ -1773,6 +1798,11 @@
     "⌘ lub ⇧, aby zaznaczyć więcej ikon": "⌘ або ⇧ для вибору кількох іконок",
     "Safari jest otwarte": "Safari відкрито",
     "Safari jest zamknięte": "Safari закрито",
-    "Przejdź do Safari i naciśnij ⌘Q, aby zastosować zmiany.": "Перейдіть до Safari й натисніть ⌘Q, щоб застосувати зміни."
+    "Przejdź do Safari i naciśnij ⌘Q, aby zastosować zmiany.": "Перейдіть до Safari й натисніть ⌘Q, щоб застосувати зміни.",
+    "Nie udało się przygotować podglądu.": "Не вдалося створити попередній перегляд.",
+    "Więcej działań": "Інші дії",
+    "Wygląd": "Вигляд",
+    "Zastosuj zapisze zmiany w Safari.": "«Застосувати» збереже зміни в Safari.",
+    "Zmień grafikę": "Змінити зображення"
   }
 }

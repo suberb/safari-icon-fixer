@@ -1,8 +1,7 @@
-## Safari Icon Fixer 0.6.1 — Refined identity
+## Safari Icon Fixer 0.6.2 — Clean inspector
 
-- New minimalist graphite-and-amethyst app icon.
-- Live Safari status and ⌘Q guidance before applying changes. Reset and restore also require Safari (including Technology Preview) to be closed.
-- New product website with interactive illustrative before/after and Color Studio previews, light/dark themes and updated sharing artwork.
-- Six interface languages, existing icon backups, compatibility checks and signed Sparkle update pipeline retained.
+- Simplified icon editor: one live preview, a compact background palette, logo margin and optional Safari display settings.
+- Image import, repair, history and reset in a contextual menu. Explicit staging before Apply.
+- All six languages, existing Sparkle updates and cache safeguards retained.
 
 The app is ad hoc signed and not Apple-notarized. Approve only a trusted copy in System Settings, if required. Safari's cache is undocumented; previews are illustrative.

@@ -1,5 +1,9 @@
 # Historia wersji
 
+## 0.6.2 — Clean inspector
+- One live icon preview, compact appearance controls, advanced Safari style disclosure, contextual actions and a clear staged-change indicator.
+- Infer the initial logo margin and display style from the current icon; no automatic cache writes.
+
 ## 0.6.1 — Refined identity
 - New graphite and amethyst app icon, refreshed product website and marketing graphics.
 - Live Safari open/closed status, Cmd-Q guidance and preflight checks before applying, resetting or restoring icons.

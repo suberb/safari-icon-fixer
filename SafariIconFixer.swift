@@ -869,42 +869,64 @@ func fetchIcon(_ host: String) async -> Pending? {
             }
         }.frame(minWidth: 330, maxWidth: .infinity, maxHeight: .infinity)
     }
-    @ViewBuilder private func detail(_ item: Site) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Text(l10n("EDYTOR IKONY")).font(.caption2.weight(.semibold)).tracking(1.1).foregroundStyle(.secondary)
-                Spacer(); Button { quickLook = item } label: { Image(systemName: "eye") }.buttonStyle(.borderless).help(l10n("Podgląd"))
+    private func iconActions(_ item: Site) -> some View {
+        Menu {
+            Button(l10n("Podgląd")) { quickLook = item }
+            Button(l10n("Importuj grafikę")) { choose(item) }.disabled(busy || !item.registered)
+            Button(l10n("Napraw wyświetlanie")) { prepareSites([item]) }.disabled(busy || !item.registered || pending[item.host] != nil)
+            Button(l10n("Historia ikony")) { openHistory(item) }.disabled(busy)
+            Button(l10n("Informacje")) { showTechnical.toggle() }
+            if pending[item.host] != nil {
+                Divider()
+                Button(l10n("Odrzuć zmianę")) { rememberDraft(); pending.removeValue(forKey: item.host); replacements.remove(item.host) }.disabled(busy)
             }
-            HStack(spacing: 12) {
-                safariTile(item, size: 72, after: true)
-                VStack(alignment: .leading, spacing: 4) {
+            Divider()
+            Button(l10n("Przywróć domyślną ikonę Safari"), role: .destructive) { requestReset([item.host], in: scope) }.disabled(busy || !item.registered)
+        } label: { Image(systemName: "ellipsis.circle").font(.system(size: 17)) }
+        .menuStyle(.borderlessButton).menuIndicator(.hidden)
+        .fixedSize().help(l10n("Więcej działań")).accessibilityLabel(l10n("Więcej działań"))
+    }
+    @ViewBuilder private func detail(_ item: Site) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top, spacing: 8) {
+                VStack(alignment: .leading, spacing: 3) {
                     Text(item.title).font(.headline).lineLimit(2)
-                    Text(item.host).font(.caption).foregroundStyle(.secondary).lineLimit(2).textSelection(.enabled)
-                    Text(pending[item.host] != nil ? l10n("Gotowa do zapisania") : (customHosts.contains(item.host) ? l10n("Własna ikona") : item.status)).font(.caption2).foregroundStyle(.secondary)
+                    Text(item.host).font(.caption).foregroundStyle(.secondary).lineLimit(1).textSelection(.enabled)
                 }
+                Spacer(minLength: 0)
+                iconActions(item)
             }
             if let data = pending[item.host]?.png ?? item.existing {
-                InlineIconStudio(data: data) { png, display in stage(item, result: Pending(png: png, source: "Color Studio", custom: true, display: display)) }
-                    .id(item.host + iconDigest(data)).disabled(!item.registered || busy)
-                Divider()
+                let currentStyle = pending[item.host]?.display ?? item.displayCode.flatMap(SafariIconDisplay.init(rawValue:))
+                InlineIconStudio(data: data, initialDisplay: currentStyle, staged: pending[item.host] != nil,
+                                 changeImage: { iconEditor = item }) { png, display in
+                    stage(item, result: Pending(png: png, source: "Color Studio", custom: true, display: display))
+                }.id(item.host + iconDigest(data) + String(currentStyle?.rawValue ?? -1) + String(pending[item.host] != nil))
+                    .disabled(!item.registered || busy || permissionDenied)
+            } else {
+                VStack(spacing: 12) {
+                    safariTile(item, size: 100, after: true)
+                    Text(item.status).font(.caption).foregroundStyle(.secondary)
+                    Button { prepareSites([item]) } label: { Label(l10n("Pobierz brakujące ikony"), systemImage: "arrow.down.circle") }
+                        .buttonStyle(.borderedProminent).disabled(busy || !item.registered || permissionDenied)
+                    Button { iconEditor = item } label: { Label(l10n("Zmień grafikę"), systemImage: "photo") }
+                        .buttonStyle(.bordered).disabled(busy || !item.registered || permissionDenied)
+                }.frame(maxWidth: .infinity).padding(.vertical, 10)
             }
-            Button { iconEditor = item } label: { Label(l10n("Personalizuj ikonę"), systemImage: "magnifyingglass").frame(maxWidth: .infinity) }.buttonStyle(.borderedProminent).controlSize(.large).disabled(busy || !item.registered)
-            Button { choose(item) } label: { Label(l10n("Importuj grafikę"), systemImage: "square.and.arrow.down").frame(maxWidth: .infinity, alignment: .leading) }.disabled(busy || !item.registered)
-            Button { prepareSites([item]) } label: { Label(l10n("Napraw wyświetlanie"), systemImage: "arrow.clockwise").frame(maxWidth: .infinity, alignment: .leading) }.disabled(busy || !item.registered)
-            Text(l10n("Zachowaj obecną ikonę; gdy jej brakuje, spróbuj ją pobrać. Zapisz przez Zastosuj.")).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            if pending[item.host] != nil { Button(l10n("Odrzuć zmianę")) { rememberDraft(); pending.removeValue(forKey: item.host); replacements.remove(item.host) }.disabled(busy) }
-            Divider()
-            Button { openHistory(item) } label: { Label(l10n("Historia ikony"), systemImage: "clock.arrow.circlepath").frame(maxWidth: .infinity, alignment: .leading) }.disabled(busy)
-            DisclosureGroup(l10n("Informacje"), isExpanded: $showTechnical) {
+            if item.locations.contains(where: { !scope.includes($0.folder) }) {
+                Label(l10n("Wspólna ikona także poza tym zakresem."), systemImage: "info.circle")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            if !item.registered { Text(l10n("Otwórz stronę w Safari i przeskanuj ponownie.")).font(.caption).foregroundStyle(.secondary) }
+            if showTechnical {
+                Divider()
                 VStack(alignment: .leading, spacing: 6) {
+                    Text(l10n("Informacje")).font(.caption.weight(.semibold))
                     Text(cacheDetails(item)).font(.caption).foregroundStyle(.secondary)
                     Text(Array(Set(item.locations.map { $0.folderTitles.isEmpty ? l10n("Bez folderu") : $0.folderTitles.joined(separator: " / ") })).sorted().joined(separator: " · ")).font(.caption).foregroundStyle(.secondary)
                     if let p = pending[item.host] { Text(p.source).font(.caption).foregroundStyle(.secondary).lineLimit(2) }
-                }.padding(.top, 5)
+                }
             }
-            if item.locations.contains(where: { !scope.includes($0.folder) }) { Text(l10n("Wspólna ikona także poza tym zakresem.")).font(.caption).foregroundStyle(.orange) }
-            if !item.registered { Text(l10n("Otwórz stronę w Safari i przeskanuj ponownie.")).font(.caption).foregroundStyle(.secondary) }
-            Button(role: .destructive) { requestReset([item.host], in: scope) } label: { Label(l10n("Przywróć domyślną ikonę Safari"), systemImage: "arrow.uturn.backward").fixedSize(horizontal: false, vertical: true) }.buttonStyle(.plain).foregroundStyle(.red).disabled(busy || !item.registered)
         }.frame(maxWidth: .infinity, alignment: .topLeading)
     }
     private var inspector: some View {
@@ -1093,6 +1115,9 @@ private enum StudioPreset: CaseIterable {
 }
 @MainActor private struct InlineIconStudio: View {
     let data: Data
+    let initialDisplay: SafariIconDisplay?
+    let staged: Bool
+    let changeImage: () -> Void
     let onStage: (Data, SafariIconDisplay) -> Void
     @State private var art: IconArtwork?
     @State private var background: IconBackground = .original
@@ -1102,47 +1127,101 @@ private enum StudioPreset: CaseIterable {
     @State private var style = 0
     @State private var rendered: Data?
     @State private var edited = false
+    @State private var advanced = false
+    @State private var renderFailed = false
     private func render() {
         guard let art, art.separate else { return }
-        rendered = composeArtwork(art, background: background, color: NSColor(color), inset: inset, lightening: lightening)
-        edited = true
+        guard let result = composeArtwork(art, background: background, color: NSColor(color), inset: inset, lightening: lightening) else {
+            renderFailed = true; return
+        }
+        renderFailed = false; rendered = result; edited = true
     }
     private var display: SafariIconDisplay {
         if style == 1 { return .fullTile }; if style == 2 { return .systemTile }
+        if !edited, let initialDisplay { return initialDisplay }
         return hasTransparentPixels(rendered ?? data) ? .systemTile : .fullTile
     }
-    var body: some View {
-        VStack(alignment: .leading, spacing: 11) {
-            HStack {
-                Text("Color Studio").font(.headline)
-                Spacer()
+    private func swatch(_ preset: StudioPreset) -> some View {
+        let tint = preset == .soft ? Color(nsColor: nsColor((art?.dominant ?? IconRGB(r: 128, g: 128, b: 128)).lightened(lightening))) : Color(nsColor: preset.color)
+        return Button {
+            background = preset.background; color = Color(nsColor: preset.color); render()
+        } label: {
+            RoundedRectangle(cornerRadius: 7).fill(tint).frame(width: 27, height: 25)
+                .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Color.secondary.opacity(0.25)))
+        }.buttonStyle(.plain).help(preset.label).accessibilityLabel(preset.label)
+    }
+    private var preview: some View {
+        VStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 23, style: .continuous).fill(Color(white: 0.5))
                 if let img = NSImage(data: rendered ?? data) {
-                    ZStack { RoundedRectangle(cornerRadius: 13).fill(Color(white: 0.5)); Image(nsImage: img).resizable().scaledToFit().padding(display == .fullTile ? 0 : 5) }
-                        .frame(width: 56, height: 56).clipShape(RoundedRectangle(cornerRadius: 13))
+                    Image(nsImage: img).resizable().scaledToFit()
+                        .frame(width: display == .fullTile ? 104 : 86, height: display == .fullTile ? 104 : 86)
                 }
-            }
+            }.frame(width: 104, height: 104).clipShape(RoundedRectangle(cornerRadius: 23, style: .continuous))
+                .shadow(color: .black.opacity(0.12), radius: 7, y: 3)
+                .accessibilityLabel(l10n("Podgląd"))
+            Button(action: changeImage) { Label(l10n("Zmień grafikę"), systemImage: "photo") }
+                .buttonStyle(.bordered).controlSize(.regular)
+        }.frame(maxWidth: .infinity).padding(.vertical, 17)
+            .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 12))
+    }
+    private var appearanceControls: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(l10n("Wygląd")).font(.callout.weight(.semibold))
             if art?.separate == true {
-                HStack(spacing: 8) {
-                    ForEach(StudioPreset.allCases, id: \.self) { preset in
-                        Button { background = preset.background; color = Color(nsColor: preset.color); render() } label: {
-                            RoundedRectangle(cornerRadius: 7).fill(preset == .soft ? Color(nsColor: nsColor((art?.dominant ?? IconRGB(r: 128, g: 128, b: 128)).lightened(0.40))) : Color(nsColor: preset.color)).frame(width: 31, height: 27)
-                                .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Color.secondary.opacity(0.25)))
-                        }.buttonStyle(.plain).help(preset.label).accessibilityLabel(preset.label)
-                    }
+                HStack(spacing: 6) {
+                    ForEach(StudioPreset.allCases, id: \.self) { preset in swatch(preset) }
                     ColorPicker(l10n("Własny kolor"), selection: Binding(get: { color }, set: { color = $0; background = .custom; render() }), supportsOpacity: false).labelsHidden()
+                    Spacer(minLength: 0)
                 }
-                Picker(l10n("Tło"), selection: $background) { ForEach(IconBackground.allCases) { Text(l10n($0.rawValue)).tag($0) } }.onChange(of: background) { _ in render() }
+                Picker(l10n("Tło"), selection: Binding(get: { background }, set: { background = $0; render() })) {
+                    ForEach(IconBackground.allCases) { Text(l10n($0.rawValue)).tag($0) }
+                }
                 HStack { Text(l10n("Margines logo")); Spacer(); Text("\(Int(inset * 100))%").monospacedDigit().foregroundStyle(.secondary) }.font(.caption)
-                Slider(value: $inset, in: 0...0.30, step: 0.01).onChange(of: inset) { _ in render() }
+                Slider(value: Binding(get: { inset }, set: { inset = $0; render() }), in: 0...0.30)
+                    .accessibilityLabel(l10n("Margines logo"))
                 if background == .automatic {
                     HStack { Text(l10n("Rozjaśnienie tła")); Spacer(); Text("\(Int(lightening * 100))%").monospacedDigit() }.font(.caption)
-                    Slider(value: $lightening, in: 0.30...0.50, step: 0.01).onChange(of: lightening) { _ in render() }
+                    Slider(value: Binding(get: { lightening }, set: { lightening = $0; render() }), in: 0.30...0.50)
+                        .accessibilityLabel(l10n("Rozjaśnienie tła"))
                 }
+            } else {
+                Text(l10n("Złożone tło. Zachowuję cały obraz, aby nie tworzyć ostrych krawędzi.")).font(.caption).foregroundStyle(.secondary)
             }
-            Picker(l10n("Styl w Safari"), selection: $style) { Text(l10n("Automatycznie")).tag(0); Text(l10n("Pełny kafelek")).tag(1); Text(l10n("Tło systemowe")).tag(2) }.onChange(of: style) { _ in edited = true }
-            Button { onStage(rendered ?? data, display) } label: { Label(l10n("Przygotuj zmianę"), systemImage: "checkmark").frame(maxWidth: .infinity) }.disabled(!edited)
-            Text(l10n("Podgląd zmienia się od razu. Safari zmieni się dopiero po zastosowaniu.")).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-        }.onAppear { art = IconArtwork(data) }
+            DisclosureGroup(l10n("Styl w Safari"), isExpanded: $advanced) {
+                Picker(l10n("Styl w Safari"), selection: Binding(get: { style }, set: { style = $0; edited = true })) {
+                    Text(l10n("Automatycznie")).tag(0); Text(l10n("Pełny kafelek")).tag(1); Text(l10n("Tło systemowe")).tag(2)
+                }.labelsHidden().padding(.top, 5)
+                Text(l10n("Pełny kafelek usuwa systemowy margines; automatycznie wybierany dla pełnego tła.")).font(.caption).foregroundStyle(.secondary)
+            }.font(.caption)
+        }
+    }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            preview
+            appearanceControls
+            if renderFailed {
+                Text(l10n("Nie udało się przygotować podglądu.")).font(.caption).foregroundStyle(.secondary)
+            }
+            if edited {
+                Button { onStage(rendered ?? data, display) } label: {
+                    Label(l10n("Przygotuj zmianę"), systemImage: "checkmark").frame(maxWidth: .infinity)
+                }.buttonStyle(.borderedProminent).controlSize(.large).disabled(renderFailed)
+            } else if staged {
+                Label(l10n("Gotowa do zapisania"), systemImage: "checkmark.circle.fill")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            if edited || staged {
+                Text(l10n("Zastosuj zapisze zmiany w Safari.")).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+        }.onAppear {
+            art = IconArtwork(data)
+            if let art, art.separate {
+                inset = max(0, min(0.30, (1 - Double(max(art.bounds.width, art.bounds.height)) / 256) / 2))
+            }
+            if let initialDisplay { style = initialDisplay == .fullTile ? 1 : 2 }
+        }
     }
 }
 @MainActor final class DraftProtection: NSObject, NSApplicationDelegate {
