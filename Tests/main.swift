@@ -88,3 +88,8 @@ for y in 15..<20 { for x in 15..<20 { let i = (y*36+x)*4; ring.rgba[i] = 255; ri
 let preserved = ring.removingEdgeBackground(white)!
 precondition(preserved.alpha(17*36+17) == 255 && preserved.rgb(17*36+17) == white)
 print("OK: padded/opaque backgrounds, connected removal, enclosed white detail, dominant color, 30–50% lightening")
+precondition(isGoogleImageHost("encrypted-tbn0.gstatic.com"))
+precondition(isGoogleImageHost("lh3.googleusercontent.com"))
+precondition(!isGoogleImageHost("gstatic.com.example.net"))
+precondition(!isGoogleImageHost(nil))
+print("OK: Google CDN redirect boundaries")

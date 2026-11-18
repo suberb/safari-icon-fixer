@@ -19,7 +19,11 @@ struct Site: Identifiable {
         return "W cache" // This is not proof of rendering in Safari.
     }
 }
-struct Pending { let png: Data; let source: String }
+struct Pending {
+    let png: Data; let source: String; let custom: Bool
+    init(png: Data, source: String, custom: Bool = false) { self.png = png; self.source = source; self.custom = custom }
+}
+func iconDigest(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
 
 func hash(_ host: String) -> String { Insecure.MD5.hash(data: Data(host.utf8)).map { String(format: "%02X", $0) }.joined() }
 func quote(_ text: String) -> String { "'" + text.replacingOccurrences(of: "'", with: "''") + "'" }
@@ -55,6 +59,15 @@ struct Cache {
     var db: URL { cache.appendingPathComponent("TouchIconCacheSettings.db") }
     var images: URL { cache.appendingPathComponent("Images", isDirectory: true) }
     var backups: URL { Cache.fm.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/Safari Icon Fixer/Backups", isDirectory: true) }
+    var registryURL: URL { backups.deletingLastPathComponent().appendingPathComponent("CustomIcons.json") }
+    func registry() throws -> [String: String] {
+        guard Cache.fm.fileExists(atPath: registryURL.path) else { return [:] }
+        return try JSONDecoder().decode([String: String].self, from: Data(contentsOf: registryURL))
+    }
+    func saveRegistry(_ value: [String: String]) throws {
+        try Cache.fm.createDirectory(at: registryURL.deletingLastPathComponent(), withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        try JSONEncoder().encode(value).write(to: registryURL, options: .atomic)
+    }
     var safariRunning: Bool { NSWorkspace.shared.runningApplications.contains { $0.bundleIdentifier == "com.apple.Safari" || $0.bundleIdentifier == "com.apple.SafariTechnologyPreview" } }
     func icon(_ host: String) -> URL { images.appendingPathComponent(hash(host) + ".png") }
     func schema() throws -> String {
@@ -132,7 +145,15 @@ struct Cache {
             if Cache.fm.fileExists(atPath: icon(host).path), try icon(host).resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink == true { throw fail("Odmowa zapisu do dowiązania symbolicznego.") }
         }
         guard current.contains(where: { $0.registered && $0.existing != nil && $0.active }) else { throw fail("Nie potwierdzono mapowania nazw plików MD5 dla tej wersji Safari. Zapis zablokowany.") }
-        let saved = try backup(); var changed: [String] = []
+        let oldRegistry = try registry()
+        var newRegistry = oldRegistry
+        for (host, item) in pending {
+            let currentDigest: String? = byHost[host]?.existing.map(iconDigest)
+            let knownDigest: String? = oldRegistry[host]
+            if item.custom || (currentDigest != nil && currentDigest == knownDigest) { newRegistry[host] = iconDigest(item.png) }
+            else { newRegistry.removeValue(forKey: host) }
+        }
+        let saved = try backup(); var changed: [String] = []; var registryChanged = false
         do {
             guard !safariRunning else { throw fail("Safari zostało otwarte podczas przygotowania.") }
             for (host, item) in pending {
@@ -140,16 +161,62 @@ struct Cache {
                 if byHost[host]?.existing != item.png { changed.append(host); try item.png.write(to: icon(host), options: .atomic) }
             }
             guard !safariRunning else { throw fail("Safari zostało otwarte podczas zapisu.") }
+            if oldRegistry != newRegistry { try saveRegistry(newRegistry); registryChanged = true }
+            guard !safariRunning else { throw fail("Safari zostało otwarte podczas zapisu.") }
             let statements = pending.keys.sorted().map { "UPDATE cache_settings SET \(flag)=1, download_status_flags=1 WHERE host=\(quote($0));" }.joined(separator: "\n")
             _ = try sql(db, "BEGIN IMMEDIATE;\n" + statements + "\nCOMMIT;", write: true)
             return (saved, pending.count)
         } catch {
             var problems: [String] = []
+            if registryChanged { do { try saveRegistry(oldRegistry) } catch { problems.append("rejestr własnych ikon") } }
             for host in changed {
                 let before = saved.appendingPathComponent("Images").appendingPathComponent(hash(host)+".png")
                 do { if Cache.fm.fileExists(atPath: before.path) { try Data(contentsOf: before).write(to: icon(host), options: .atomic) } else if Cache.fm.fileExists(atPath: icon(host).path) { try Cache.fm.removeItem(at: icon(host)) } } catch { problems.append(host) }
             }
             throw fail("Zapis przerwany: \(error.localizedDescription). Kopia: \(saved.path)" + (problems.isEmpty ? "" : " Nie udało się odtworzyć: \(problems.joined(separator: ", "))"))
+        }
+    }
+    func reset(_ hosts: Set<String>, scope: FavoriteScope, trackedOnly: Bool) throws -> URL {
+        guard !hosts.isEmpty, !safariRunning else { throw fail("Zamknij Safari (⌘Q), a następnie ponów reset.") }
+        let flag = try schema()
+        let sites = try scan().sites
+        let byHost = Dictionary(uniqueKeysWithValues: sites.map { ($0.host, $0) })
+        let oldRegistry = try registry()
+        var nextRegistry = oldRegistry
+        // Never touch domains outside the requested scope or unknown/ambiguous rows.
+        for host in hosts {
+            guard let site = byHost[host], site.registered, site.locations.contains(where: { scope.includes($0.folder) }) else { throw fail("Stan \(host) zmienił się. Przeskanuj ponownie.") }
+            if trackedOnly {
+                guard let data = site.existing, oldRegistry[host] == iconDigest(data) else { throw fail("Ikona \(host) została zmieniona poza aplikacją. Przeskanuj ponownie.") }
+            }
+            let path = icon(host)
+            if let values = try? path.resourceValues(forKeys: [.isSymbolicLinkKey, .isRegularFileKey]) {
+                guard values.isSymbolicLink != true, values.isRegularFile == true else { throw fail("Nieprawidłowa ścieżka ikony: \(host).") }
+            } else if Cache.fm.fileExists(atPath: path.path) { throw fail("Nie można zweryfikować pliku: \(host).") }
+            nextRegistry.removeValue(forKey: host)
+        }
+        guard sites.contains(where: { $0.registered && $0.existing != nil && $0.active }) else { throw fail("Nie potwierdzono mapowania cache dla tej wersji Safari.") }
+        let saved = try backup()
+        var removed: [String] = []; var registryChanged = false
+        do {
+            for host in hosts.sorted() {
+                guard !safariRunning else { throw fail("Safari zostało otwarte podczas resetu.") }
+                let path = icon(host)
+                if Cache.fm.fileExists(atPath: path.path) { try Cache.fm.removeItem(at: path); removed.append(host) }
+            }
+            if nextRegistry != oldRegistry { try saveRegistry(nextRegistry); registryChanged = true }
+            guard !safariRunning else { throw fail("Safari zostało otwarte podczas resetu.") }
+            let statements = hosts.sorted().map { "UPDATE cache_settings SET \(flag)=0, download_status_flags=0 WHERE host=\(quote($0));" }.joined(separator: "\n")
+            _ = try sql(db, "BEGIN IMMEDIATE;\n" + statements + "\nCOMMIT;", write: true)
+            return saved
+        } catch {
+            var problems: [String] = []
+            if registryChanged { do { try saveRegistry(oldRegistry) } catch { problems.append("rejestr własnych ikon") } }
+            for host in removed {
+                let file = saved.appendingPathComponent("Images").appendingPathComponent(hash(host)+".png")
+                do { try Data(contentsOf: file).write(to: icon(host), options: .atomic) } catch { problems.append(host) }
+            }
+            throw fail("Reset przerwany: \(error.localizedDescription). Kopia: \(saved.path)" + (problems.isEmpty ? "" : " Nie odtworzono: " + problems.joined(separator: ", ")))
         }
     }
     func restore(_ saved: URL) throws -> URL {
@@ -225,6 +292,24 @@ func fetchIcon(_ host: String) async -> Pending? {
     @State private var waitingForPermission = false
     @State private var permissionHelp = ""
     @State private var iconEditor: Site?
+    @State private var customHosts = Set<String>()
+    @State private var resetHosts = Set<String>()
+    @State private var resetScope: FavoriteScope = .root
+    @State private var resetTrackedOnly = false
+    @State private var confirmReset = false
+    private var scopedCustom: Set<String> { Set(scoped.filter { customHosts.contains($0.host) && $0.registered }.map { $0.host }) }
+    func requestReset(_ hosts: Set<String>, in range: FavoriteScope, trackedOnly: Bool = false) {
+        guard !hosts.isEmpty, !busy, !permissionDenied else { return }
+        resetHosts = hosts; resetScope = range; resetTrackedOnly = trackedOnly; confirmReset = true
+    }
+    func executeReset() {
+        do {
+            let saved = try store.reset(resetHosts, scope: resetScope, trackedOnly: resetTrackedOnly)
+            for host in resetHosts { pending.removeValue(forKey: host); replacements.remove(host); marked.remove(host) }
+            let count = resetHosts.count
+            scan(); message = "Zresetowano \(count) ikon. Otwórz Safari; w razie potrzeby odwiedź strony, aby pobrać oryginalne ikony. Kopia: \(saved.lastPathComponent)."
+        } catch { handleOperationError(error) }
+    }
     var scoped: [Site] {
         var result: [Site] = []
         for original in sites {
@@ -268,12 +353,17 @@ func fetchIcon(_ host: String) async -> Pending? {
         guard !busy else { return }
         do {
             let result = try store.scan(); sites = result.sites; folders = result.folders
+            let tracking = (try? store.registry()) ?? [:]
+            customHosts = Set(sites.compactMap { site -> String? in
+                guard site.registered, let data = site.existing, tracking[site.host] == iconDigest(data) else { return nil }
+                return site.host
+            })
             if case .folder = scope, !folders.contains(where: { $0.scope == scope }) { scope = .root }
             let hosts = Set(sites.map(\.host)); pending = pending.filter { hosts.contains($0.key) }; replacements.formIntersection(hosts); marked.formIntersection(hosts)
             permissionDenied = false; showPermission = false; waitingForPermission = false; permissionHelp = ""
             message = "Odczytano \(sites.count) domen w Ulubionych. W wybranym zakresie: \(scoped.count)."
         } catch {
-            sites = []; folders = []; selected = nil
+            sites = []; folders = []; selected = nil; customHosts = []
             if isSafariPermissionError(error) {
                 reportPermission(error, present: presentPermission)
             } else {
@@ -319,7 +409,7 @@ func fetchIcon(_ host: String) async -> Pending? {
                 Text(site.host).font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
-            Text(pending[site.host] != nil ? "Gotowa" : site.status)
+            Text(pending[site.host] != nil ? "Gotowa" : (customHosts.contains(site.host) ? "Własna" : site.status))
                 .font(.caption).foregroundStyle(pending[site.host] != nil ? Color.green : Color.secondary)
         }
     }
@@ -328,7 +418,7 @@ func fetchIcon(_ host: String) async -> Pending? {
         let size = site.pixelSize.map { "\($0) px" } ?? "brak"
         return "Cache: \(size) · aktywna: \(site.active ? "tak" : "nie") · status: \(flags)"
     }
-    func choose(_ s: Site) { let panel = NSOpenPanel(); panel.allowedContentTypes = [.image]; panel.canChooseDirectories = false; guard panel.runModal() == .OK, let url = panel.url else { return }; do { let data = try Data(contentsOf: url); guard let (png,_) = safePNG(data) else { throw fail("Nieobsługiwany lub uszkodzony obraz (limit 8 MB).") }; pending[s.host] = Pending(png: png,source:url.lastPathComponent); if s.existing != nil { replacements.insert(s.host) }; message = "Przygotowano własną ikonę. Zmiana wymaga zatwierdzenia." } catch { message = error.localizedDescription } }
+    func choose(_ s: Site) { let panel = NSOpenPanel(); panel.allowedContentTypes = [.image]; panel.canChooseDirectories = false; guard panel.runModal() == .OK, let url = panel.url else { return }; do { let data = try Data(contentsOf: url); guard let (png,_) = safePNG(data) else { throw fail("Nieobsługiwany lub uszkodzony obraz (limit 8 MB).") }; pending[s.host] = Pending(png: png,source:url.lastPathComponent, custom: true); if s.existing != nil { replacements.insert(s.host) }; message = "Przygotowano własną ikonę. Zmiana wymaga zatwierdzenia." } catch { message = error.localizedDescription } }
     func write() {
         guard !permissionDenied else { showPermission = true; return }
         let batch = scopedPending
@@ -384,6 +474,11 @@ func fetchIcon(_ host: String) async -> Pending? {
                 Button("Zaznacz widoczne") { marked.formUnion(shown.filter { $0.registered }.map { $0.host }) }.disabled(busy)
                 Button("Odznacz") { marked.subtract(scoped.map { $0.host }) }.disabled(busy)
                 Spacer(minLength: 4)
+                Menu("Reset ikon") {
+                    Button("Reset zaznaczonych (\(markedSites.count))") { requestReset(Set(markedSites.map { $0.host }), in: scope) }.disabled(markedSites.isEmpty)
+                    Button("Reset własnych w zakresie (\(scopedCustom.count))") { requestReset(scopedCustom, in: scope, trackedOnly: true) }.disabled(scopedCustom.isEmpty)
+                    Button("Reset wszystkich własnych (\(customHosts.count))") { requestReset(customHosts, in: .all, trackedOnly: true) }.disabled(customHosts.isEmpty)
+                }.disabled(busy || permissionDenied)
                 Button("Napraw zaznaczone (\(markedSites.count))", action: prepareMarked).disabled(busy || markedSites.isEmpty)
             }
             HStack(spacing: 12) {
@@ -415,6 +510,8 @@ func fetchIcon(_ host: String) async -> Pending? {
             Button("Wymuś naprawę tej ikony") { prepareSites([s]) }.disabled(busy || !s.registered)
             Button("Szukaj ikon w internecie…") { iconEditor = s }.disabled(busy || !s.registered)
             Button("Wybierz własną ikonę…") { choose(s) }.disabled(busy || !s.registered)
+            Button("Resetuj ikonę Safari", role: .destructive) { requestReset([s.host], in: scope) }.disabled(busy || !s.registered)
+            if customHosts.contains(s.host) { Text("Własna ikona zapisana przez aplikację.").font(.caption).foregroundStyle(.secondary) }
             if let p = pending[s.host] {
                 Text(p.source).font(.caption).foregroundStyle(.secondary).lineLimit(2)
                 Button("Odrzuć zmianę") { pending.removeValue(forKey: s.host); replacements.remove(s.host) }.disabled(busy)
@@ -522,6 +619,12 @@ func fetchIcon(_ host: String) async -> Pending? {
         }
         .onChange(of: scope) { _ in selected = nil }
         .alert("Zastosować przygotowane ikony?",isPresented:$confirm) { Button("Anuluj",role:.cancel){}; Button("Zapisz",action:write) } message: { Text("Zakres: \(scopeLabel). Zapis: \(scopedPending.count) ikon. Safari współdzieli ikony domen, więc zmiana może być widoczna również w innych folderach i poza Ulubionymi. Zamknij Safari przez ⌘Q. Przed zapisem powstanie kopia cache.") }
+        .alert("Zresetować \(resetHosts.count) ikon?", isPresented: $confirmReset) {
+            Button("Anuluj", role: .cancel) {}
+            Button("Resetuj", role: .destructive, action: executeReset)
+        } message: {
+            Text("Usunie zapisane ikony wybranych domen i umożliwi Safari ich ponowne pobranie. Dotyczy także wspólnych ikon w innych folderach. Zamknij Safari (⌘Q). Powstanie kopia. Zakładki i hasła pozostaną bez zmian.")
+        }
         .alert("Przywrócić cały cache ikon?",isPresented:$confirmRestore) { Button("Anuluj",role:.cancel){}; Button("Przywróć",role:.destructive) { if let saved = chosenBackup { do { let displaced = try store.restore(saved); pending = [:]; replacements = []; marked = []; scan(); message = "Przywrócono kopię. Poprzedni cache: \(displaced.lastPathComponent)." } catch {handleOperationError(error)} } } } message: { Text("Wymaga zamknięcia Safari. Bieżący folder również zostanie zachowany jako kopia.") }
     }
 }

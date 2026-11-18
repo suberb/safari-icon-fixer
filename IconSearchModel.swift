@@ -55,3 +55,8 @@ func publicImageURL(_ url: URL) -> Bool {
     guard let tld = host.split(separator: ".").last, tld.first?.isLetter == true, tld.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" }) else { return false }
     return true
 }
+
+func isGoogleImageHost(_ host: String?) -> Bool {
+    guard let host = host?.lowercased() else { return false }
+    return ["gstatic.com", "googleusercontent.com", "google.com"].contains { host == $0 || host.hasSuffix("." + $0) }
+}

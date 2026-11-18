@@ -26,7 +26,7 @@ func searchCommons(_ text: String) async throws -> [IconCandidate] {
     config.timeoutIntervalForResource = 20
     config.httpShouldSetCookies = false
     config.urlCredentialStorage = nil
-    config.httpAdditionalHeaders = ["User-Agent": "SafariIconFixer/0.2.8 (personal macOS icon utility)"]
+    config.httpAdditionalHeaders = ["User-Agent": "SafariIconFixer/0.2.9 (personal macOS icon utility)"]
     let session = URLSession(configuration: config, delegate: CommonsPolicy(), delegateQueue: nil)
     defer { session.invalidateAndCancel() }
     func get(_ url: URL, limit: Int) async throws -> Data {
@@ -156,26 +156,31 @@ private struct Checkerboard: View {
         status = size < 128 ? "Mały obraz (\(size) px). Wybierz większy podgląd dla lepszej jakości." : "Obraz pobrany (\(size) px). Ustaw tło i margines."
     }
     private func takeGoogleImage(_ value: String) {
-        picking = false; job?.cancel()
+        picking = false; job?.cancel(); generation = UUID(); loading = false
+        guard !value.isEmpty else { status = "Nie wykryto obrazu w tym miejscu. Kliknij środek powiększonego podglądu lub skopiuj obraz/adres i wklej tutaj."; return }
         let token = UUID(); generation = token; loading = true; status = "Pobieram wybraną grafikę…"
         job = Task {
             do {
                 let (data, source) = try await selectedGoogleImage(value)
                 guard !Task.isCancelled, generation == token else { return }
                 try addImage(data, source: source)
+                showingGoogle = false
             } catch {
                 guard !Task.isCancelled, generation == token else { return }
-                status = "\(error.localizedDescription) Skopiuj obraz prawym przyciskiem i wybierz Wklej obraz."
+                status = "\(error.localizedDescription) Skopiuj obraz lub jego adres prawym przyciskiem i wybierz Wklej obraz/adres."
             }
             loading = false
         }
     }
     private func pasteImage() {
+        picking = false; job?.cancel(); generation = UUID(); loading = false
         let paste = NSPasteboard.general
         do {
-            if let data = paste.data(forType: .png) ?? paste.data(forType: .tiff) { try addImage(data, source: "Schowek"); return }
-            if let images = paste.readObjects(forClasses: [NSImage.self], options: nil) as? [NSImage], let data = images.first?.tiffRepresentation { try addImage(data, source: "Schowek"); return }
-            status = "W schowku nie ma obrazu. Użyj Kopiuj obraz (nie adres obrazu)."
+            if let data = paste.data(forType: .png) ?? paste.data(forType: .tiff) { try addImage(data, source: "Schowek"); showingGoogle = false; return }
+            if let images = paste.readObjects(forClasses: [NSImage.self], options: nil) as? [NSImage], let data = images.first?.tiffRepresentation { try addImage(data, source: "Schowek"); showingGoogle = false; return }
+            let value = (paste.string(forType: .URL) ?? paste.string(forType: .string) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if value.hasPrefix("data:image/") || URL(string: value).map(publicImageURL) == true { takeGoogleImage(value); return }
+            status = "W schowku nie ma obrazu ani adresu HTTPS. Użyj Kopiuj obraz / Kopiuj adres obrazu."
         } catch { status = error.localizedDescription }
     }
     private func imageTile(_ data: Data, size: CGFloat) -> some View {
@@ -208,7 +213,7 @@ private struct Checkerboard: View {
                 Button("Ikony ze strony") { start(website: true) }
                 Button("Commons") { start(website: false) }
                 Button("Dodaj plik…", action: importFile)
-                Button("Wklej obraz", action: pasteImage)
+                Button("Wklej obraz/adres", action: pasteImage)
                 Spacer()
                 if loading { ProgressView().controlSize(.small); Button("Stop") { job?.cancel(); generation = UUID(); loading = false; status = "Przerwano." } }
             }
@@ -223,7 +228,7 @@ private struct Checkerboard: View {
             }.pickerStyle(.segmented).labelsHidden()
             if showingGoogle {
                 HStack {
-                    Button(picking ? "Anuluj wybór" : "Wybierz obraz") { picking.toggle() }.buttonStyle(.borderedProminent).disabled(googleURL == nil)
+                    Button(picking ? "Anuluj wybór" : "Wybierz obraz") { picking.toggle() }.buttonStyle(.borderedProminent).disabled(googleURL == nil || loading)
                     Spacer()
                     Button("Otwórz w przeglądarce", action: browserSearch).font(.caption)
                 }
@@ -236,7 +241,7 @@ private struct Checkerboard: View {
                     GoogleImageBrowser(url: googleURL, picking: picking, onImage: takeGoogleImage, onNotice: { status = $0 })
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-                Text(picking ? "Kliknij teraz obraz w wynikach lub podglądzie." : "Kliknij zwykły wynik, by go powiększyć. Potem wybierz obraz (lub ⌥ + klik). Większe grafiki dają lepszy efekt.").font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                Text(picking ? "Kliknij środek obrazu w wynikach lub podglądzie." : "Kliknij zwykły wynik, by go powiększyć. Potem wybierz obraz (lub ⌥ + klik). Możesz też skopiować obraz lub adres prawym przyciskiem i wkleić go powyżej.").font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             } else {
                 Picker("", selection: $filter) { ForEach(["Wszystkie", "Przezroczyste", "Z tłem"], id: \.self) { Text($0).tag($0) } }.labelsHidden().pickerStyle(.segmented)
                 ScrollView {
@@ -302,8 +307,8 @@ private struct Checkerboard: View {
                 Button("Anuluj") { dismiss() }.keyboardShortcut(.cancelAction)
                 Spacer()
                 Button("Użyj tej ikony") {
-                    if let data = preview, let selected { onChoose(Pending(png: data, source: selected.source + " · tło: " + background.rawValue)); dismiss() }
-                }.buttonStyle(.borderedProminent).disabled(preview == nil)
+                    if let data = preview, let selected { onChoose(Pending(png: data, source: selected.source + " · tło: " + background.rawValue, custom: true)); dismiss() }
+                }.buttonStyle(.borderedProminent).disabled(preview == nil || loading || picking)
             }
         }.padding(18).frame(minWidth: 720, idealWidth: 900, minHeight: 505, idealHeight: 620)
         .onAppear {

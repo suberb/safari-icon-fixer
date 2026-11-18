@@ -10,17 +10,32 @@ import WebKit
     var onImage: (String) -> Void
     var onNotice: (String) -> Void
     static let world = WKContentWorld.world(name: "IconFixerSelection")
+    // Coordinates are captured by the native window when pick mode is active, so
+    // Google overlays and event handlers cannot consume the selection click.
     static let script = """
     (() => {
       if (window.__sifInstalled) return;
       window.__sifInstalled = true;
       window.__sifPick = false;
-      document.addEventListener('click', async (event) => {
-        if (!event.isTrusted || (!window.__sifPick && !event.altKey)) return;
-        const img = event.composedPath().find(x => x instanceof HTMLImageElement) || document.elementsFromPoint(event.clientX, event.clientY).find(x => x instanceof HTMLImageElement);
-        if (!img) return;
-        event.preventDefault(); event.stopImmediatePropagation();
-        window.__sifPick = false;
+      function send(value) {
+        window.webkit.messageHandlers.iconSelection.postMessage(typeof value === 'string' && value.length <= 11000000 ? value : '');
+      }
+      window.__sifPickAt = async function(x, y) {
+        const under = document.elementsFromPoint(x, y);
+        const candidates = [];
+        function add(img) {
+          if (!(img instanceof HTMLImageElement) || candidates.includes(img)) return;
+          const r = img.getBoundingClientRect();
+          if (r.width < 24 || r.height < 24 || x < r.left || x > r.right || y < r.top || y > r.bottom) return;
+          if (!img.currentSrc && !img.src) return;
+          candidates.push(img);
+        }
+        for (const el of under) { add(el); for (const child of el.querySelectorAll('img')) add(child); }
+        if (!candidates.length) for (const img of document.images) add(img);
+        if (!candidates.length) { send(''); return; }
+        // Prefer the image in the actual hit stack; otherwise choose a sizeable preview.
+        const direct = under.find(el => candidates.includes(el));
+        const img = direct || candidates.sort((a,b) => b.getBoundingClientRect().width*b.getBoundingClientRect().height - a.getBoundingClientRect().width*a.getBoundingClientRect().height)[0];
         let src = img.currentSrc || img.src || '';
         try {
           if (src.startsWith('blob:')) {
@@ -28,8 +43,14 @@ import WebKit
             if (blob.size > 8000000 || !blob.type.startsWith('image/')) throw Error();
             src = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(blob); });
           }
-          if (typeof src === 'string' && src.length <= 11000000) window.webkit.messageHandlers.iconSelection.postMessage(src);
-        } catch (_) { window.webkit.messageHandlers.iconSelection.postMessage(''); }
+          send(src);
+        } catch (_) { send(''); }
+      };
+      document.addEventListener('click', (event) => {
+        if (!event.isTrusted || (!window.__sifPick && !event.altKey)) return;
+        event.preventDefault(); event.stopImmediatePropagation();
+        window.__sifPick = false;
+        window.__sifPickAt(event.clientX, event.clientY);
       }, true);
     })();
     """
@@ -43,6 +64,7 @@ import WebKit
         let view = WKWebView(frame: .zero, configuration: config)
         view.navigationDelegate = context.coordinator
         context.coordinator.view = view
+        context.coordinator.installMonitor()
         return view
     }
     func updateNSView(_ view: WKWebView, context: Context) {
@@ -56,6 +78,7 @@ import WebKit
         }
     }
     static func dismantleNSView(_ view: WKWebView, coordinator: Coordinator) {
+        coordinator.removeMonitor()
         view.stopLoading()
         view.configuration.userContentController.removeScriptMessageHandler(forName: "iconSelection", contentWorld: Self.world)
         view.navigationDelegate = nil
@@ -65,11 +88,38 @@ import WebKit
         var requested: URL?
         var previousPicking = false
         weak var view: WKWebView?
+        private var monitor: Any?
+        private var selecting = false
+        func installMonitor() {
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
+                guard let self, let web = self.view, (self.parent.picking || event.modifierFlags.contains(.option)), event.window === web.window, let window = web.window else { return event }
+                let point = web.convert(event.locationInWindow, from: nil)
+                guard web.bounds.contains(point), window.isKeyWindow, !self.selecting, let url = web.url, googlePageURL(url) else { return event }
+                let x = Double(point.x - web.bounds.minX)
+                let y = Double(web.isFlipped ? point.y - web.bounds.minY : web.bounds.maxY - point.y)
+                let w = Double(web.bounds.width); let h = Double(web.bounds.height)
+                guard w > 0, h > 0 else { return event }
+                self.selecting = true
+                let code = "(() => { if (typeof window.__sifPickAt !== 'function') return false; window.__sifPick = false; window.__sifPickAt(\(x) * innerWidth / \(w), \(y) * innerHeight / \(h)); return true; })()"
+                web.evaluateJavaScript(code, in: nil, in: GoogleImageBrowser.world) { [weak self] result in
+                    guard let self else { return }
+                    self.selecting = false
+                    switch result {
+                    case .success(let value):
+                        if (value as? Bool) != true { self.parent.onImage("") }
+                    case .failure: self.parent.onImage("")
+                    }
+                }
+                return nil
+            }
+        }
+        func removeMonitor() { if let monitor { NSEvent.removeMonitor(monitor); self.monitor = nil } }
         init(parent: GoogleImageBrowser) { self.parent = parent }
         func setPicking() {
             let code = parent.picking ? "window.__sifPick = true;" : "window.__sifPick = false;"
             view?.evaluateJavaScript(code, in: nil, in: GoogleImageBrowser.world, completionHandler: nil)
         }
+        func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) { setPicking() }
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { setPicking() }
         func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
             parent.onNotice("Google Grafika: \(error.localizedDescription). Możesz wkleić obraz lub otworzyć przeglądarkę.")
@@ -85,7 +135,7 @@ import WebKit
             decisionHandler(.allow)
         }
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-            guard message.name == "iconSelection", message.frameInfo.isMainFrame, let url = message.frameInfo.request.url, googlePageURL(url), let value = message.body as? String, value.count <= 11_000_000 else { return }
+            guard message.name == "iconSelection", message.frameInfo.isMainFrame, let url = view?.url, googlePageURL(url), let origin = URL(string: "https://" + message.frameInfo.securityOrigin.host), googlePageURL(origin), let value = message.body as? String, value.count <= 11_000_000 else { return }
             parent.onImage(value)
         }
     }
@@ -96,7 +146,9 @@ private final class GoogleDownloadPolicy: NSObject, URLSessionTaskDelegate {
         // Avoid silently following a selected image to an unrelated server.
         let oldHost = response.url?.host?.lowercased()
         let next = request.url
-        completionHandler(next.map(publicImageURL) == true && next?.host?.lowercased() == oldHost ? request : nil)
+        let newHost = next?.host?.lowercased()
+        let allowed = next.map(publicImageURL) == true && (newHost == oldHost || (isGoogleImageHost(oldHost) && isGoogleImageHost(newHost)))
+        completionHandler(allowed ? request : nil)
     }
 }
 func selectedGoogleImage(_ value: String) async throws -> (Data, String) {
@@ -106,6 +158,7 @@ func selectedGoogleImage(_ value: String) async throws -> (Data, String) {
     }
     guard let url = URL(string: value), publicImageURL(url) else { throw fail("Nie można pobrać tego obrazu. Wybierz inny albo użyj Kopiuj/Wklej obraz.") }
     let cfg = URLSessionConfiguration.ephemeral
+    cfg.httpAdditionalHeaders = ["Accept": "image/*,*/*;q=0.8", "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Safari/605.1.15"]
     cfg.httpShouldSetCookies = false; cfg.urlCredentialStorage = nil; cfg.timeoutIntervalForRequest = 12; cfg.timeoutIntervalForResource = 25
     let session = URLSession(configuration: cfg, delegate: GoogleDownloadPolicy(), delegateQueue: nil)
     defer { session.invalidateAndCancel() }
