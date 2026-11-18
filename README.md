@@ -15,7 +15,7 @@ macOS · Apple Silicon · Free · No account required
 
 </div>
 
-![Safari Icon Fixer — illustrative Favorites preview with fictional websites](docs/media/hero.jpg)
+![Safari Icon Fixer — illustrative Favorites preview with fictional websites](docs/media/hero-calm.jpg)
 
 ## Give your Favorites a fresh look
 
