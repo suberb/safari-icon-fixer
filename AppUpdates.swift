@@ -9,8 +9,8 @@ extension Notification.Name {
 }
 
 enum AppReleaseInfo {
-    static var version: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.4.1" }
-    static var build: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "17" }
+    static var version: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.4.2" }
+    static var build: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "18" }
     static let repository = "suberb/safari-icon-fixer"
     static let repositoryURL = URL(string: "https://github.com/\(repository)")!
     static let releasesURL = repositoryURL.appendingPathComponent("releases")

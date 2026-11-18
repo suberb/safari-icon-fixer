@@ -1,5 +1,8 @@
 # Historia wersji
 
+## 0.4.2
+Clearer repair, customization and restore-default actions in all six languages. Preserve cached PNG bytes and existing display style when repairing; keep prepared changes.
+
 ## 0.4.1
 Styled purple DMG with real Applications shortcut, installation instructions and launch-time update checks (manual installation).
 

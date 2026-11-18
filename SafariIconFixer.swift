@@ -417,8 +417,11 @@ func fetchIcon(_ host: String) async -> Pending? {
             for (i, site) in targets.enumerated() {
                 message = l10n("Przygotowanie {0}/{1}: {2}", String(describing: i+1), String(describing: targets.count), String(describing: site.host))
                 guard site.registered else { failures += 1; continue }
+                if pending[site.host] != nil { continue }
                 if let existing = site.existing, let (png, _) = safePNG(existing) {
-                    pending[site.host] = Pending(png: png, source: l10n("Ikona z cache — ponowny zapis PNG 256 × 256 i aktywacja"))
+                    let isPNG = existing.starts(with: [UInt8]( [137, 80, 78, 71, 13, 10, 26, 10] ))
+                    let data = isPNG ? existing : png
+                    pending[site.host] = Pending(png: data, source: l10n("Zachowano obecną grafikę i styl Safari"), custom: customHosts.contains(site.host), expectedDigest: iconDigest(existing))
                     replacements.insert(site.host)
                 } else if let p = await fetchIcon(site.host) {
                     pending[site.host] = p
@@ -436,7 +439,7 @@ func fetchIcon(_ host: String) async -> Pending? {
         HStack(spacing: 10) {
             Toggle("", isOn: Binding(get: { marked.contains(site.host) }, set: { toggleMarked(site.host, $0) }))
                 .toggleStyle(.checkbox).labelsHidden().disabled(busy || !site.registered)
-                .help(l10n("Zaznacz do wymuszonej naprawy"))
+                .help(l10n("Zaznacz ikonę do operacji zbiorczych"))
             tile(site.existing, fallback: site.title, size: 36)
             VStack(alignment: .leading) {
                 Text(site.title).lineLimit(1)
@@ -546,10 +549,10 @@ func fetchIcon(_ host: String) async -> Pending? {
     }
     private var resetMenu: some View {
         Menu {
-            Button(l10n("Reset zaznaczonych ({0})", String(describing: markedSites.count))) { requestReset(Set(markedSites.map { $0.host }), in: scope) }.disabled(markedSites.isEmpty)
-            Button(l10n("Reset własnych w zakresie ({0})", String(describing: scopedCustom.count))) { requestReset(scopedCustom, in: scope, trackedOnly: true) }.disabled(scopedCustom.isEmpty)
-            Button(l10n("Reset wszystkich własnych ({0})", String(describing: customHosts.count))) { requestReset(customHosts, in: .all, trackedOnly: true) }.disabled(customHosts.isEmpty)
-        } label: { Label(l10n("Reset"), systemImage: "arrow.uturn.backward") }.disabled(busy || permissionDenied)
+            Button(l10n("Domyślne — zaznaczone ({0})", String(describing: markedSites.count))) { requestReset(Set(markedSites.map { $0.host }), in: scope) }.disabled(markedSites.isEmpty)
+            Button(l10n("Domyślne — własne w zakresie ({0})", String(describing: scopedCustom.count))) { requestReset(scopedCustom, in: scope, trackedOnly: true) }.disabled(scopedCustom.isEmpty)
+            Button(l10n("Domyślne — wszystkie własne ({0})", String(describing: customHosts.count))) { requestReset(customHosts, in: .all, trackedOnly: true) }.disabled(customHosts.isEmpty)
+        } label: { Label(l10n("Przywróć domyślne"), systemImage: "arrow.uturn.backward") }.disabled(busy || permissionDenied)
     }
     private var controls: some View {
         VStack(alignment: .leading, spacing: 9) {
@@ -574,7 +577,7 @@ func fetchIcon(_ host: String) async -> Pending? {
                 } label: { Label(l10n("Zaznaczenie ({0})", String(describing: markedSites.count)), systemImage: "checkmark.square") }.disabled(busy)
                 Spacer(minLength: 0)
                 Button(action: prepare) { Image(systemName: "arrow.down.circle") }.help(l10n("Pobierz brakujące ikony")).disabled(busy || permissionDenied || missing.isEmpty)
-                Button(action: prepareMarked) { Label(l10n("Napraw"), systemImage: "wand.and.stars") }.disabled(busy || markedSites.isEmpty)
+                Button(action: prepareMarked) { Label(l10n("Napraw wyświetlanie"), systemImage: "wand.and.stars") }.help(l10n("Zachowaj obecną ikonę; gdy jej brakuje, spróbuj ją pobrać. Zapisz przez Zastosuj.")).disabled(busy || markedSites.isEmpty)
                 Menu {
                     Button(l10n("Pełny kafelek — bez szarej ramki")) { prepareDisplay(markedSites, style: .fullTile) }
                     Button(l10n("Tło systemowe")) { prepareDisplay(markedSites, style: .systemTile) }
@@ -635,9 +638,11 @@ func fetchIcon(_ host: String) async -> Pending? {
             if pending[s.host] != nil {
                 HStack { Image(systemName: "checkmark.circle.fill").foregroundStyle(.green); Text(l10n("Gotowa do zapisania")).font(.caption) }
             }
-            Button { iconEditor = s } label: { Label(l10n("Edytuj lub znajdź"), systemImage: "wand.and.stars").frame(maxWidth: .infinity) }
-                .buttonStyle(.borderedProminent).controlSize(.large).disabled(busy || !s.registered)
-            Button { prepareSites([s]) } label: { Label(l10n("Wymuś naprawę"), systemImage: "arrow.clockwise").frame(maxWidth: .infinity, alignment: .leading) }.disabled(busy || !s.registered)
+            Button { iconEditor = s } label: { Label(l10n("Personalizuj ikonę"), systemImage: "wand.and.stars").frame(maxWidth: .infinity) }
+                 .buttonStyle(.borderedProminent).controlSize(.large).disabled(busy || !s.registered)
+            Text(l10n("Zmień grafikę, tło i rozmiar logo.")).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            Button { prepareSites([s]) } label: { Label(l10n("Napraw wyświetlanie"), systemImage: "arrow.clockwise").frame(maxWidth: .infinity, alignment: .leading) }.disabled(busy || !s.registered)
+            Text(l10n("Zachowaj obecną ikonę; gdy jej brakuje, spróbuj ją pobrać. Zapisz przez Zastosuj.")).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             Button { choose(s) } label: { Label(l10n("Importuj grafikę"), systemImage: "square.and.arrow.down").frame(maxWidth: .infinity, alignment: .leading) }.disabled(busy || !s.registered)
             Menu {
                 Button(l10n("Pełny kafelek — bez szarej ramki")) { prepareDisplay([s], style: .fullTile) }
@@ -656,7 +661,8 @@ func fetchIcon(_ host: String) async -> Pending? {
                 if let p = pending[s.host] { Text(p.source).font(.caption).foregroundStyle(.secondary).lineLimit(2) }
                 if !s.registered { Text(l10n("Otwórz stronę w Safari i przeskanuj ponownie.")).font(.caption).foregroundStyle(.secondary) }
             }
-            Button(role: .destructive) { requestReset([s.host], in: scope) } label: { Label(l10n("Resetuj ikonę Safari"), systemImage: "arrow.uturn.backward") }.buttonStyle(.plain).foregroundStyle(.red).disabled(busy || !s.registered)
+            Button(role: .destructive) { requestReset([s.host], in: scope) } label: { Label(l10n("Przywróć domyślną ikonę Safari"), systemImage: "arrow.uturn.backward") }.buttonStyle(.plain).foregroundStyle(.red).disabled(busy || !s.registered)
+            Text(l10n("Usuń personalizację i pozwól Safari pobrać ikonę od nowa.")).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }.frame(maxWidth: .infinity, alignment: .topLeading)
     }
     private var inspector: some View {
@@ -752,11 +758,11 @@ func fetchIcon(_ host: String) async -> Pending? {
         }
         .onChange(of: scope) { _ in selected = nil }
         .alert(l10n("Zastosować przygotowane ikony?"),isPresented:$confirm) { Button(l10n("Anuluj"),role:.cancel){}; Button(l10n("Zapisz"),action:write) } message: { Text(l10n("Zakres: {0}. Zapis: {1} ikon. Safari współdzieli ikony domen, więc zmiana może być widoczna również w innych folderach i poza Ulubionymi. Zamknij Safari przez ⌘Q. Przed zapisem powstanie kopia cache.", String(describing: scopeLabel), String(describing: scopedPending.count))) }
-        .alert(l10n("Zresetować {0} ikon?", String(describing: resetHosts.count)), isPresented: $confirmReset) {
+        .alert(l10n("Przywrócić domyślny wygląd {0} ikon?", String(describing: resetHosts.count)), isPresented: $confirmReset) {
             Button(l10n("Anuluj"), role: .cancel) {}
-            Button(l10n("Resetuj"), role: .destructive, action: executeReset)
+            Button(l10n("Przywróć domyślne"), role: .destructive, action: executeReset)
         } message: {
-            Text(l10n("Usunie zapisane ikony wybranych domen i umożliwi Safari ich ponowne pobranie. Dotyczy także wspólnych ikon w innych folderach. Zamknij Safari (⌘Q). Powstanie kopia. Zakładki i hasła pozostaną bez zmian."))
+            Text(l10n("Usunie obecną grafikę i własne tło. Safari spróbuje pobrać domyślną ikonę; do tego czasu może wyświetlać literę. Dotyczy też wspólnych ikon w innych folderach. Zamknij Safari (⌘Q). Powstanie kopia. Zakładki pozostaną bez zmian."))
         }
         .alert(l10n("Przywrócić cały cache ikon?"),isPresented:$confirmRestore) { Button(l10n("Anuluj"),role:.cancel){}; Button(l10n("Przywróć"),role:.destructive) { if let saved = chosenBackup { do { let displaced = try store.restore(saved); pending = [:]; replacements = []; marked = []; scan(); message = l10n("Przywrócono kopię. Poprzedni cache: {0}.", String(describing: displaced.lastPathComponent)) } catch {handleOperationError(error)} } } } message: { Text(l10n("Wymaga zamknięcia Safari. Bieżący folder również zostanie zachowany jako kopia.")) }
     }
